@@ -9,6 +9,9 @@ if os.path.isdir(lib_folder):
 
 import re
 from subliminal.cli import subliminal
+from subliminal import refiner_manager
+
+refiner_manager.register('release = refiners.release:refine')
 
 if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])

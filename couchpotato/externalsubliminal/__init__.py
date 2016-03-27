@@ -31,7 +31,8 @@ config = [{
                 {
                     'name': 'provider',
                     'description': 'Subliminal Providers',
-                    'placeholder': 'addic7ed, legendastv, opensubtitles, podnapisi, subscenter, thesubdb, tvsubtitles',
+                    'placeholder': 'addic7ed, legendastv, opensubtitles, podnapisi, shooter, subscenter, thesubdb, '
+                                   'tvsubtitles',
                 },
                 {
                     'name': 'addic7ed_username',
