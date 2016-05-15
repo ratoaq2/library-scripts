@@ -52,10 +52,11 @@ config = Config.from_file(cleanit_yaml)
 if debug:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
-    logging.getLogger('subliminal').addHandler(handler)
-    logging.getLogger('subliminal').setLevel(logging.DEBUG)
-    logging.getLogger('cleanit').addHandler(handler)
-    logging.getLogger('cleanit').setLevel(logging.DEBUG)
+    logger_names = ['cleanit', 'refiners', 'subliminal']
+    for logger_name in logger_names:
+        l = logging.getLogger(logger_name)
+        l.addHandler(handler)
+        l.setLevel(logging.DEBUG)
 
 region.configure('dogpile.cache.memory')
 refiner_manager.register('release = refiners.release:refine')
