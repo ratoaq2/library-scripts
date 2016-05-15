@@ -19,6 +19,7 @@ from cleanit.subtitle import Subtitle
 from datetime import timedelta
 from subliminal import (AsyncProviderPool, get_scores, refine, refiner_manager, region, save_subtitles, scan_video,
                         scan_videos)
+from subliminal.core import search_external_subtitles
 from subliminal.subtitle import get_subtitle_path
 
 if len(sys.argv) != 2:
@@ -44,6 +45,7 @@ movie_refiners = tuple(cfg.get('movie_refiners'))
 age_match = re.match(r'^(?:(?P<weeks>\d+?)w)?(?:(?P<days>\d+?)d)?(?:(?P<hours>\d+?)h)?$', cfg.get('age', ''))
 age = timedelta(**{k: int(v) for k, v in age_match.groupdict(0).items()}) if age_match else None
 archives = cfg.get('archives', True)
+force = cfg.get('force', False)
 
 # cleanit configuration
 cleanit_yaml = os.path.join(current_folder, 'cleanit.yml')
@@ -65,7 +67,9 @@ videos = scan_videos(path, age=age, archives=archives) if os.path.isdir(path) el
 
 with AsyncProviderPool(max_workers=max_workers, providers=providers, provider_configs=provider_configs) as p:
     for v in videos:
-        refine(v, episode_refiners=episode_refiners, movie_refiners=movie_refiners)
+        if not force:
+            v.subtitle_languages |= set(search_external_subtitles(v.name, directory=directory).values())
+        refine(v, episode_refiners=episode_refiners, movie_refiners=movie_refiners, embedded_subtitles=not force)
         scores = get_scores(v)
         min_score = scores['hash'] - scores['audio_codec'] - scores['resolution'] - scores['hearing_impaired']
         subtitles = p.download_best_subtitles(p.list_subtitles(v, languages - v.subtitle_languages),
