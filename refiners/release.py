@@ -2,9 +2,10 @@
 import logging
 import os
 
+from commons.helpers import remove_non_release_groups
 from guessit import guessit
 
-logger = logging.getLogger('subliminal')
+logger = logging.getLogger(__name__)
 
 MOVIE_ATTRIBUTES = {'title': 'title', 'year': 'year', 'format': 'format', 'release_group': 'release_group',
                     'resolution': 'screen_size',  'video_codec': 'video_codec', 'audio_codec': 'audio_codec'}
@@ -15,9 +16,11 @@ EPISODE_ATTRIBUTES = {'series': 'title', 'season': 'season', 'episode': 'episode
 
 def refine(video, release_name=None, release_file=None, extension='release', **kwargs):
     """Refine a video by using the original release name.
-    The refiner will first try to use the release_name passed as an argument;
-    If no release name, then it will read release_file;
-    If no release file, then it will read the file video_name.<extension> seeking for a release name.
+    The refiner will first try:
+    - Read the file video_name.<extension> seeking for a release name
+    - If no release name, it will read the file release file seeking for a release name
+    - If no release name, it will use the release_name passed as an argument
+    - If no release name, then no change in the video object is made
 
     When a release name is found, the video object will be enhanced using the guessit properties extracted from it.
 
@@ -40,16 +43,20 @@ def refine(video, release_name=None, release_file=None, extension='release', **k
     :param str extension: the release file extension.
 
     """
-    logger.debug(u'Starting release refiner [extension={0}, release_name={1}, release_file={2}]'.format
-               (extension, release_name, release_file))
+    logger.debug(u'Starting release refiner [extension=%s, release_name=%s, release_file=%s]',
+                 extension, release_name, release_file)
     dirpath, filename = os.path.split(video.name)
     dirpath = dirpath or '.'
     fileroot, fileext = os.path.splitext(filename)
     release_file = get_release_file(dirpath, fileroot, extension) or release_file
-    release_name = get_release_name(release_file) or release_name
+    release_name = remove_non_release_groups(get_release_name(release_file) or release_name)
+
+    if not release_name:
+        logger.debug(u'No release name for %s', video.name)
+        return
 
     release_path = os.path.join(dirpath, release_name + fileext)
-    logger.debug(u'Guessing using {}'.format(release_path))
+    logger.debug(u'Guessing using %s', release_path)
 
     guess = guessit(release_path)
     attributes = MOVIE_ATTRIBUTES if guess.get('type') == 'movie' else EPISODE_ATTRIBUTES
@@ -59,7 +66,7 @@ def refine(video, release_name=None, release_file=None, extension='release', **k
 
         if new_value and old_value != new_value:
             setattr(video, key, new_value)
-            logger.debug(u'Attribute {0} changed from {1} to {2}'.format(key, old_value, new_value))
+            logger.debug(u'Attribute %s changed from %s to %s', key, old_value, new_value)
 
 
 def get_release_file(dirpath, filename, extension):
@@ -74,11 +81,11 @@ def get_release_file(dirpath, filename, extension):
 
     Returns: the release file if the file exists
     """
-    release_file = os.path.join(dirpath, '{}.{}'.format(filename, extension))
+    release_file = os.path.join(dirpath, filename + '.' + extension)
 
     # skip if info file doesn't exist
     if os.path.isfile(release_file):
-        logger.info(u'Found release file {}'.format(release_file))
+        logger.debug(u'Found release file %s', release_file)
         return release_file
 
 
@@ -99,6 +106,6 @@ def get_release_name(release_file):
 
     # skip if no release name was found
     if not release_name:
-        logger.warning(u'Release file {} does not contain a release name'.format(release_file))
+        logger.warning(u'Release file %s does not contain a release name', release_file)
 
     return release_name
