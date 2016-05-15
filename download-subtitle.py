@@ -10,11 +10,13 @@ lib_folder = os.path.abspath(os.path.join(current_folder, 'lib/'))
 if os.path.isdir(lib_folder):
     sys.path.insert(0, lib_folder)
 
+import re
 import yaml
 from babelfish import Language
 from cleanit.api import clean_subtitle, save_subtitle
 from cleanit.config import Config
 from cleanit.subtitle import Subtitle
+from datetime import timedelta
 from subliminal import (AsyncProviderPool, get_scores, refine, refiner_manager, region, save_subtitles, scan_video,
                         scan_videos)
 from subliminal.subtitle import get_subtitle_path
@@ -39,6 +41,9 @@ directory = cfg.get('directory')
 encoding = cfg.get('encoding')
 episode_refiners = tuple(cfg.get('episode_refiners'))
 movie_refiners = tuple(cfg.get('movie_refiners'))
+age_match = re.match(r'^(?:(?P<weeks>\d+?)w)?(?:(?P<days>\d+?)d)?(?:(?P<hours>\d+?)h)?$', cfg.get('age', ''))
+age = timedelta(**{k: int(v) for k, v in age_match.groupdict(0).items()}) if age_match else None
+archives = cfg.get('archives', True)
 
 # cleanit configuration
 cleanit_yaml = os.path.join(current_folder, 'cleanit.yml')
@@ -55,7 +60,7 @@ if debug:
 region.configure('dogpile.cache.memory')
 refiner_manager.register('release = refiners.release:refine')
 
-videos = scan_videos(path) if os.path.isdir(path) else [scan_video(path)]
+videos = scan_videos(path, age=age, archives=archives) if os.path.isdir(path) else [scan_video(path)]
 
 with AsyncProviderPool(max_workers=max_workers, providers=providers, provider_configs=provider_configs) as p:
     for v in videos:
