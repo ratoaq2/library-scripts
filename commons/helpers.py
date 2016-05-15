@@ -1,3 +1,5 @@
+import re
+
 # Do not remove all [....] suffixes, or it will break anime releases ## Need to verify this is true now
 # Check your database for funky release_names and add them here, to improve failed handling, archiving, and history.
 # select release_name from tv_episodes WHERE LENGTH(release_name);
