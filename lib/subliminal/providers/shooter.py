@@ -16,6 +16,7 @@ language_converters.register('shooter = subliminal.converters.shooter:ShooterCon
 
 
 class ShooterSubtitle(Subtitle):
+    """Shooter Subtitle."""
     provider_name = 'shooter'
 
     def __init__(self, language, hash, download_link):
@@ -23,6 +24,7 @@ class ShooterSubtitle(Subtitle):
         self.hash = hash
         self.download_link = download_link
 
+    @property
     def id(self):
         return self.download_link
 
@@ -37,6 +39,7 @@ class ShooterSubtitle(Subtitle):
 
 
 class ShooterProvider(Provider):
+    """Shooter Provider."""
     languages = {Language(l) for l in ['eng', 'zho']}
     server_url = 'https://www.shooter.cn/api/subapi.php'
 
@@ -56,7 +59,7 @@ class ShooterProvider(Provider):
 
         # handle subtitles not found
         if r.content == b'\xff':
-            logger.debug('No subtitle found')
+            logger.debug('No subtitles found')
             return []
 
         # parse the subtitles
