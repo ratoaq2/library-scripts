@@ -22,5 +22,5 @@ original_base_name = os.path.splitext(os.path.basename(original_video_path))[0]
 final_dir_name = os.path.dirname(final_video_path)
 final_base_name = os.path.splitext(os.path.basename(final_video_path))[0]
 
-with codecs.open(os.path.join(final_dir_name, final_base_name) + EXTENSION, encoding='utf-8', mode='a') as f:
+with codecs.open(os.path.join(final_dir_name, final_base_name) + EXTENSION, encoding='utf-8', mode='w') as f:
     f.write(original_base_name + '\r\n')
