@@ -3,7 +3,7 @@
 # flags: [ignorecase, dotall, multiline, locale, unicode, verbose]
 # rules:
 #   - sometext
-#   - (\b)(\d{1,2})x(\d{1,2})(\b): {replacement: \1S\2E\3\4, type: regex, match: search, languages: [pt-BR]}
+#   - (\b)(\d{1,2})x(\d{1,2})(\b): {replacement: \1S\2E\3\4, type: regex, match: contains}
 
 templates:
   common:
