@@ -59,6 +59,7 @@ groups:
       - '\.?\[eztv\]': {type: regex}
       - '\.?\[NO.RAR\]': {type: regex}
       - '\.?\[PublicHD\]': {type: regex}
+      - '\.cp\(tt\d{7}\)': {type: regex}
       - '\.www\.Cpasbien\.pw': {type: regex, match: startswith}
       - '\.\[BT\]': {type: regex}
       - '\.\[\d*(P|p)\]\[HEVC\]': {type: regex}
