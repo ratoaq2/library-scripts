@@ -1,3 +1,4 @@
+import os
 from cleanit.api import clean
 from cleanit.config import Config
 
