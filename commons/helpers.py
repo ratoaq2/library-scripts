@@ -17,4 +17,4 @@ def sanitize_release_name(release_name):
     if not release_name:
         return release_name
 
-    return '/'.join([clean(name, RULES_CONFIG.rules) for name in release_name.split('/')])
+    return '/'.join([clean(name.strip(), RULES_CONFIG.rules) for name in release_name.split('/')])
