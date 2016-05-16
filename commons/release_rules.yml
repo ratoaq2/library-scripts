@@ -1,0 +1,69 @@
+# type: [text, regex]
+# match: [exact, contains, startswith, endswith]
+# flags: [ignorecase, dotall, multiline, locale, unicode, verbose]
+# rules:
+#   - sometext
+#   - (\b)(\d{1,2})x(\d{1,2})(\b): {replacement: \1S\2E\3\4, type: regex, match: search, languages: [pt-BR]}
+
+templates:
+  common:
+    type: text
+    match: endswith
+    flags: ignorecase
+
+groups:
+  blacklist:
+    template: common
+    rules:
+      # Do not remove all [....] suffixes, or it will break anime releases ## Need to verify this is true now
+      # Check your database for funky release_names and add them here, to improve failed handling, archiving, and history.
+      # select release_name from tv_episodes WHERE LENGTH(release_name);
+      # [eSc], [SSG], [GWC] are valid release groups for non-anime
+      - '(?<![57])\.1': {type: regex}
+      - '(musicbolt.com)'
+      - '(\[NO-RAR\]( ))?- \[( )www\.torrentday\.com( )\]': {type: regex}
+      - '-20-40'
+      - '- \[( )www\.TorrentDay\.com( )\]': {type: regex, match: startswith}
+      - '- { www.SceneTime.com }'
+      - '-={SPARR' # is this correct?
+      - '-={SPARROW}=-'
+      - '-BUYMORE'
+      - '-Chamele0n'
+      - '-NZBGEEK'
+      - '-Obfuscated'
+      - '-RP'
+      - '-Siklopentan'
+      - '-[SpastikusTV]'
+      - '.English'
+      - '.German'
+      - '.GiuseppeTnT'
+      - '.gz' # is this correct?
+      - '.Renc'
+      - '.RiPSaLoT'
+      - '.[www.usabit.com]'
+      - '[1044]'
+      - '[AndroidTwoU]'
+      - '[brassetv]'
+      - '[cttv]'
+      - '[EtHD]'
+      - '[ettv]'
+      - '[GloDLS]'
+      - '[rarbg]'
+      - '[rartv]'
+      - '[Seedbox]'
+      - '[silv4]'
+      - '[Talamasca32]'
+      - '[www.newpct1.com]': {match: startswith}
+      - '\.?[[.]vtv\]?': {type: regex} # is this correct?
+      - '\.?\(NLsub\)': {type: regex}
+      - '\.?\[eztv\]': {type: regex}
+      - '\.?\[NO.RAR\]': {type: regex}
+      - '\.?\[PublicHD\]': {type: regex}
+      - '\.www\.Cpasbien\.pw': {type: regex, match: startswith}
+      - '\.\[BT\]': {type: regex}
+      - '\.\[\d*(P|p)\]\[HEVC\]': {type: regex}
+      - '\.{1,2}Italian': {type: regex}
+      - '\[( )?www\.Cpasbien\.((com)|(pe)|(pw))( )?\]( )?': {type: regex, match: startswith}
+      - '\[REQ\]\s': {type: regex}
+      - '\]\.\[( )?www\.tensiontorrent.com( )?\] - ': {type: regex, match: startswith}
+      - '{ www.SceneTime.com } - ': {match: startswith}
