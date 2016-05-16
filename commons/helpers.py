@@ -5,7 +5,7 @@ from cleanit.config import Config
 current_folder = os.path.dirname(os.path.realpath(__file__))
 rules_yaml = os.path.join(current_folder, 'release_rules.yml')
 
-RULES = Config.from_file(rules_yaml)
+RULES_CONFIG = Config.from_file(rules_yaml)
 
 
 def sanitize_release_name(release_name):
@@ -17,4 +17,4 @@ def sanitize_release_name(release_name):
     if not release_name:
         return release_name
 
-    return [clean(name, RULES) for name in release_name.split('/')].join('/')
+    return [clean(name, RULES_CONFIG.rules) for name in release_name.split('/')].join('/')
