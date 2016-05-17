@@ -27,6 +27,7 @@ class ExternalSubliminal(Plugin):
 
     def callscript(self, message=None, group=None):
         log.info('Executing ExternalSubliminal...')
+        self.create_release_file(group)
 
         renamed_video_files = [f for f in group['renamed_files'] if f.lower().endswith(EXTENSIONS)]
         if not renamed_video_files:
@@ -82,3 +83,17 @@ class ExternalSubliminal(Plugin):
                     results.append(str(self.conf(argument_name)))
 
         return results
+
+    def create_release_file(self, group):
+        original_movie = group['files']['movie'][0]
+        original_name = os.path.basename(os.path.splitext(original_movie)[0])
+        dirname = group.get('dirname')
+        release_path = os.path.join(dirname, original_name) if dirname else original_name
+        renamed_filename = group['filename']
+        file_extension = 'release'
+        release_file = os.path.join(group['destination_dir'], renamed_filename + '.' + file_extension)
+
+        if not os.path.exists(release_file):
+            log.info('Creating missing release file with release name %s ...' % release_path)
+            with open(release_file, "w") as text_file:
+                text_file.write(release_path + '\r\n')

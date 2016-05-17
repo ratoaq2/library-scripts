@@ -23,6 +23,7 @@ class ReleaseFile(Plugin):
         file_extension = self.conf('file_extension')
         release_file = os.path.join(group['destination_dir'], renamed_filename + '.' + file_extension)
 
+        log.info('Creating release file with release name %s ...' % release_path)
         with open(release_file, "w") as text_file:
             text_file.write(release_path + '\r\n')
 
