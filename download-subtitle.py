@@ -5,6 +5,7 @@
 import logging
 import os
 import sys
+
 current_folder = os.path.dirname(os.path.realpath(__file__))
 lib_folder = os.path.abspath(os.path.join(current_folder, 'lib/'))
 if os.path.isdir(lib_folder):
@@ -21,6 +22,7 @@ from subliminal import (AsyncProviderPool, get_scores, refine, refiner_manager, 
                         scan_videos)
 from subliminal.core import search_external_subtitles
 from subliminal.subtitle import get_subtitle_path
+from subliminal.video import Movie
 
 if len(sys.argv) != 2:
     print('Usage: {} videofile.ext'.format(os.path.basename(__file__)))
@@ -72,6 +74,9 @@ with AsyncProviderPool(max_workers=max_workers, providers=providers, provider_co
         refine(v, episode_refiners=episode_refiners, movie_refiners=movie_refiners, embedded_subtitles=not force)
         scores = get_scores(v)
         min_score = scores['hash'] - scores['audio_codec'] - scores['resolution'] - scores['hearing_impaired']
+        if isinstance(v, Movie):
+            min_score -= scores['release_group']
+
         subtitles = p.download_best_subtitles(p.list_subtitles(v, languages - v.subtitle_languages),
                                               v, languages, min_score=min_score,
                                               hearing_impaired=hearing_impaired, only_one=only_one)
