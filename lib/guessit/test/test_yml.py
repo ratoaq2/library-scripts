@@ -16,7 +16,7 @@ import pytest
 from rebulk.remodule import re
 from rebulk.utils import is_iterable
 
-from guessit.options import parse_options
+from ..options import parse_options, load_config
 from ..yamlutils import OrderedDictYAMLLoader
 from .. import guessit
 
@@ -31,7 +31,6 @@ string_predicate = None
 
 # filename_predicate = lambda filename: 'episode_title' in filename
 # string_predicate = lambda string: '-DVD.BlablaBla.Fix.Blablabla.XVID' in string
-
 
 
 class EntryResult(object):
@@ -72,10 +71,10 @@ class EntryResult(object):
             return '%s%s: ERROR! (valid=%i, missing=%i, different=%i, extra=%i, others=%i)' % \
                    ('-' if self.negates else '', self.string, len(self.valid), len(self.missing), len(self.different),
                     len(self.extra), len(self.others))
-        else:
-            return '%s%s: UNKOWN! (valid=%i, missing=%i, different=%i, extra=%i, others=%i)' % \
-                   ('-' if self.negates else '', self.string, len(self.valid), len(self.missing), len(self.different),
-                    len(self.extra), len(self.others))
+
+        return '%s%s: UNKOWN! (valid=%i, missing=%i, different=%i, extra=%i, others=%i)' % \
+               ('-' if self.negates else '', self.string, len(self.valid), len(self.missing), len(self.different),
+                len(self.extra), len(self.others))
 
     @property
     def details(self):
@@ -114,6 +113,8 @@ def files_and_ids(predicate=None):
     ids = []
 
     for (dirpath, _, filenames) in os.walk(__location__):
+        if os.path.split(dirpath)[-1] == 'config':
+            continue
         if dirpath == __location__:
             dirpath_rel = ''
         else:
@@ -174,8 +175,9 @@ class TestYml(object):
         entries.assert_ok()
 
     def check_data(self, filename, string, expected):
-        if six.PY2 and isinstance(string, six.text_type):
-            string = string.encode('utf-8')
+        if six.PY2:
+            if isinstance(string, six.text_type):
+                string = string.encode('utf-8')
             converts = []
             for k, v in expected.items():
                 if isinstance(v, six.text_type):
@@ -207,6 +209,8 @@ class TestYml(object):
             options = parse_options(options)
         if 'implicit' not in options:
             options['implicit'] = True
+        options['config'] = False
+        options = load_config(options)
         try:
             result = guessit(string, options)
         except Exception as exc:

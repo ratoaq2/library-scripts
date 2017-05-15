@@ -7,8 +7,16 @@
 ? Some.Title.XViD-by.Artik[SEDG].avi
 : release_group: Artik[SEDG]
 
-? "[ABC] Some.Title.XViD.avi"
+? "[ABC] Some.Title.avi"
 ? some/folder/[ABC]Some.Title.avi
+: release_group: ABC
+
+? "[ABC] Some.Title.XViD-GRP.avi"
+? some/folder/[ABC]Some.Title.XViD-GRP.avi
+: release_group: GRP
+
+? "[ABC] Some.Title.S01E02.avi"
+? some/folder/[ABC]Some.Title.S01E02.avi
 : release_group: ABC
 
 ? Some.Title.XViD-S2E02.NoReleaseGroup.avi
@@ -31,3 +39,33 @@
   season: 1
   title: Test
   type: episode
+
+? Show.Name.x264-byEMP
+: title: Show Name
+  video_codec: h264
+  release_group: byEMP
+
+? Show.Name.x264-NovaRip
+: title: Show Name
+  video_codec: h264
+  release_group: NovaRip
+
+? Show.Name.x264-PARTiCLE
+: title: Show Name
+  video_codec: h264
+  release_group: PARTiCLE
+
+? Show.Name.x264-POURMOi
+: title: Show Name
+  video_codec: h264
+  release_group: POURMOi
+
+? Show.Name.x264-RipPourBox
+: title: Show Name
+  video_codec: h264
+  release_group: RipPourBox
+
+? Show.Name.x264-RiPRG
+: title: Show Name
+  video_codec: h264
+  release_group: RiPRG
