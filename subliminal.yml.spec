@@ -19,3 +19,6 @@ movie_refiners:
   - omdb
 debug: true
 cache_dir: /cache/
+release_group_exceptions:
+  - BluRay
+  - DVD

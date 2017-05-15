@@ -87,6 +87,7 @@ def download_subtitle(path):
     age = timedelta(**{k: int(v) for k, v in age_match.groupdict(0).items()}) if age_match else None
     archives = cfg.get('archives', True)
     force = cfg.get('force', False)
+    release_group_exceptions = cfg.get('release_group_exceptions', [])
 
     # cleanit configuration
     cleanit_yaml = os.path.join(current_folder, 'cleanit.yml')
@@ -113,8 +114,8 @@ def download_subtitle(path):
             refine(v, episode_refiners=episode_refiners, movie_refiners=movie_refiners, embedded_subtitles=not force)
 
             scores = get_scores(v)
-            min_score = scores['hash'] - scores['audio_codec'] - scores['resolution'] - scores['hearing_impaired']
-            if isinstance(v, Movie):
+            min_score = scores['hash'] - scores['audio_codec'] - scores['resolution'] - scores['hearing_impaired'] - 1
+            if not v.release_group or v.format in release_group_exceptions:
                 min_score -= scores['release_group']
 
             p.discarded_providers.clear()
