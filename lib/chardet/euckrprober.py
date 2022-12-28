@@ -25,18 +25,23 @@
 # 02110-1301  USA
 ######################### END LICENSE BLOCK #########################
 
-from .mbcharsetprober import MultiByteCharSetProber
-from .codingstatemachine import CodingStateMachine
 from .chardistribution import EUCKRDistributionAnalysis
-from .mbcssm import EUCKRSMModel
+from .codingstatemachine import CodingStateMachine
+from .mbcharsetprober import MultiByteCharSetProber
+from .mbcssm import EUCKR_SM_MODEL
 
 
 class EUCKRProber(MultiByteCharSetProber):
-    def __init__(self):
-        MultiByteCharSetProber.__init__(self)
-        self._mCodingSM = CodingStateMachine(EUCKRSMModel)
-        self._mDistributionAnalyzer = EUCKRDistributionAnalysis()
+    def __init__(self) -> None:
+        super().__init__()
+        self.coding_sm = CodingStateMachine(EUCKR_SM_MODEL)
+        self.distribution_analyzer = EUCKRDistributionAnalysis()
         self.reset()
 
-    def get_charset_name(self):
+    @property
+    def charset_name(self) -> str:
         return "EUC-KR"
+
+    @property
+    def language(self) -> str:
+        return "Korean"

@@ -1,0 +1,60 @@
+templates:
+  - &no-spam-text-contains-ignorecase
+    type: text
+    flags: ignorecase
+    tags:
+      - no-spam
+      - default
+    priority: 1000
+
+rules:
+  drop-ads-and-credits[no-spam]:
+    <<: *no-spam-text-contains-ignorecase
+    patterns:
+      - 'opensubtitles'
+      - 'isubdb'
+      - 'subscene'
+      - 'insubs'
+      - 'subsfiction'
+      - 'acesubs'
+      - 'artsubs'
+      - 'art subs'
+      - 'geeksubs'
+      - 'allsubs'
+      - 'creepysubs'
+      - 'consubs'
+      - 'wtfsubs'
+      - 'subs-fast'
+      - 'extremesubs'
+      - 'legendas.tv'
+      - 'legendastv'
+      - 'legendas tv'
+      - 'subsland'
+    examples:
+      - 'contact www.OpenSubtitles.org today'
+      - 'to remove all ads from www.OpenSubtitles.org'
+      - 'wodurch sämtliche Werbung von www.OpenSubtitles.org entfernt wird'
+      - 'Kontaktiere noch heute www.OpenSubtitles.org'
+      - 'fale com www.OpenSubtitles.org hoje'
+      - 'remova todos os anúncios do www.OpenSubtitles.org'
+      - 'subscene.com'
+      - 'www.insubs.com'
+      - '@subsfiction'
+      - 'AceSubs'
+      - '<i>Facebook.com/ArtSubs</i>'
+      - '<i>instagram.com/ArtSubs_Legendas</i>'
+      - 'Art Subs -'
+      - '<i>GeekSubs'
+      - 'Downloaded From www.AllSubs.org'
+      - 'Equipe CreepySubs'
+      - 'ConSubs'
+      - '<i>WTFSubs apresenta'
+      - 'Subs-fast'
+      - '<b>>> eXtremeSubs <<'
+      - '<b>www.legendas.tv</b>'
+      - '<font color=#FFFF00>LegendasTV'
+      - 'Legendas TV'
+      - 'Subsland'
+      - |
+        iSubDB.com - fast, modern, simple
+        Subtitles search by drag & drop

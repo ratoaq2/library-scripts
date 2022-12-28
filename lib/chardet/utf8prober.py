@@ -25,52 +25,58 @@
 # 02110-1301  USA
 ######################### END LICENSE BLOCK #########################
 
-from . import constants
+from typing import Union
+
 from .charsetprober import CharSetProber
 from .codingstatemachine import CodingStateMachine
-from .mbcssm import UTF8SMModel
-
-ONE_CHAR_PROB = 0.5
+from .enums import MachineState, ProbingState
+from .mbcssm import UTF8_SM_MODEL
 
 
 class UTF8Prober(CharSetProber):
-    def __init__(self):
-        CharSetProber.__init__(self)
-        self._mCodingSM = CodingStateMachine(UTF8SMModel)
+    ONE_CHAR_PROB = 0.5
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.coding_sm = CodingStateMachine(UTF8_SM_MODEL)
+        self._num_mb_chars = 0
         self.reset()
 
-    def reset(self):
-        CharSetProber.reset(self)
-        self._mCodingSM.reset()
-        self._mNumOfMBChar = 0
+    def reset(self) -> None:
+        super().reset()
+        self.coding_sm.reset()
+        self._num_mb_chars = 0
 
-    def get_charset_name(self):
+    @property
+    def charset_name(self) -> str:
         return "utf-8"
 
-    def feed(self, aBuf):
-        for c in aBuf:
-            codingState = self._mCodingSM.next_state(c)
-            if codingState == constants.eError:
-                self._mState = constants.eNotMe
+    @property
+    def language(self) -> str:
+        return ""
+
+    def feed(self, byte_str: Union[bytes, bytearray]) -> ProbingState:
+        for c in byte_str:
+            coding_state = self.coding_sm.next_state(c)
+            if coding_state == MachineState.ERROR:
+                self._state = ProbingState.NOT_ME
                 break
-            elif codingState == constants.eItsMe:
-                self._mState = constants.eFoundIt
+            if coding_state == MachineState.ITS_ME:
+                self._state = ProbingState.FOUND_IT
                 break
-            elif codingState == constants.eStart:
-                if self._mCodingSM.get_current_charlen() >= 2:
-                    self._mNumOfMBChar += 1
+            if coding_state == MachineState.START:
+                if self.coding_sm.get_current_charlen() >= 2:
+                    self._num_mb_chars += 1
 
-        if self.get_state() == constants.eDetecting:
-            if self.get_confidence() > constants.SHORTCUT_THRESHOLD:
-                self._mState = constants.eFoundIt
+        if self.state == ProbingState.DETECTING:
+            if self.get_confidence() > self.SHORTCUT_THRESHOLD:
+                self._state = ProbingState.FOUND_IT
 
-        return self.get_state()
+        return self.state
 
-    def get_confidence(self):
+    def get_confidence(self) -> float:
         unlike = 0.99
-        if self._mNumOfMBChar < 6:
-            for i in range(0, self._mNumOfMBChar):
-                unlike = unlike * ONE_CHAR_PROB
+        if self._num_mb_chars < 6:
+            unlike *= self.ONE_CHAR_PROB**self._num_mb_chars
             return 1.0 - unlike
-        else:
-            return unlike
+        return unlike

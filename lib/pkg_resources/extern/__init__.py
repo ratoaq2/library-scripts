@@ -6,6 +6,7 @@ class VendorImporter:
     A PEP 302 meta path importer for finding optionally-vendored
     or otherwise naturally-installed packages from root_name.
     """
+
     def __init__(self, root_name, vendored_names=(), vendor_pkg=None):
         self.root_name = root_name
         self.vendored_names = set(vendored_names)
@@ -42,13 +43,6 @@ class VendorImporter:
                 __import__(extant)
                 mod = sys.modules[extant]
                 sys.modules[fullname] = mod
-                # mysterious hack:
-                # Remove the reference to the extant package/module
-                # on later Python versions to cause relative imports
-                # in the vendor package to resolve the same modules
-                # as those going through this importer.
-                if sys.version_info > (3, 3):
-                    del sys.modules[extant]
                 return mod
             except ImportError:
                 pass
@@ -60,6 +54,12 @@ class VendorImporter:
                 "distribution.".format(**locals())
             )
 
+    def create_module(self, spec):
+        return self.load_module(spec.name)
+
+    def exec_module(self, module):
+        pass
+
     def install(self):
         """
         Install this importer into sys.meta_path if not already present.
@@ -67,5 +67,6 @@ class VendorImporter:
         if self not in sys.meta_path:
             sys.meta_path.append(self)
 
-names = 'packaging', 'six'
+
+names = 'packaging', 'pyparsing', 'appdirs'
 VendorImporter(__name__, names).install()

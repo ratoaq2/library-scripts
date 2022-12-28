@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # pylint: disable-all
+from __future__ import print_function
 
 import os
 import re
@@ -12,6 +13,7 @@ from textwrap import dedent
 
 from chardet import detect
 from pysrt import SubRipFile, SubRipTime, VERSION_STRING
+
 
 def underline(string):
     return "\033[4m%s\033[0m" % string
@@ -131,9 +133,14 @@ class SubRipShifter(object):
 
     def run(self, args):
         self.arguments = self.build_parser().parse_args(args)
-        if self.arguments.in_place:
-            self.create_backup()
-        self.arguments.action()
+
+        if os.path.isfile(self.arguments.file):
+            if self.arguments.in_place:
+                self.create_backup()
+            self.arguments.action()
+
+        else:
+            print('No such file', self.arguments.file)
 
     def parse_time(self, time_string):
         negative = time_string.startswith('-')

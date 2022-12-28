@@ -26,37 +26,122 @@
 # 02110-1301  USA
 ######################### END LICENSE BLOCK #########################
 
-from . import constants
+import logging
 import re
+from typing import Optional, Union
+
+from .enums import LanguageFilter, ProbingState
+
+INTERNATIONAL_WORDS_PATTERN = re.compile(
+    b"[a-zA-Z]*[\x80-\xFF]+[a-zA-Z]*[^a-zA-Z\x80-\xFF]?"
+)
 
 
 class CharSetProber:
-    def __init__(self):
-        pass
 
-    def reset(self):
-        self._mState = constants.eDetecting
+    SHORTCUT_THRESHOLD = 0.95
 
-    def get_charset_name(self):
+    def __init__(self, lang_filter: LanguageFilter = LanguageFilter.NONE) -> None:
+        self._state = ProbingState.DETECTING
+        self.active = True
+        self.lang_filter = lang_filter
+        self.logger = logging.getLogger(__name__)
+
+    def reset(self) -> None:
+        self._state = ProbingState.DETECTING
+
+    @property
+    def charset_name(self) -> Optional[str]:
         return None
 
-    def feed(self, aBuf):
-        pass
+    @property
+    def language(self) -> Optional[str]:
+        raise NotImplementedError
 
-    def get_state(self):
-        return self._mState
+    def feed(self, byte_str: Union[bytes, bytearray]) -> ProbingState:
+        raise NotImplementedError
 
-    def get_confidence(self):
+    @property
+    def state(self) -> ProbingState:
+        return self._state
+
+    def get_confidence(self) -> float:
         return 0.0
 
-    def filter_high_bit_only(self, aBuf):
-        aBuf = re.sub(b'([\x00-\x7F])+', b' ', aBuf)
-        return aBuf
+    @staticmethod
+    def filter_high_byte_only(buf: Union[bytes, bytearray]) -> bytes:
+        buf = re.sub(b"([\x00-\x7F])+", b" ", buf)
+        return buf
 
-    def filter_without_english_letters(self, aBuf):
-        aBuf = re.sub(b'([A-Za-z])+', b' ', aBuf)
-        return aBuf
+    @staticmethod
+    def filter_international_words(buf: Union[bytes, bytearray]) -> bytearray:
+        """
+        We define three types of bytes:
+        alphabet: english alphabets [a-zA-Z]
+        international: international characters [\x80-\xFF]
+        marker: everything else [^a-zA-Z\x80-\xFF]
+        The input buffer can be thought to contain a series of words delimited
+        by markers. This function works to filter all words that contain at
+        least one international character. All contiguous sequences of markers
+        are replaced by a single space ascii character.
+        This filter applies to all scripts which do not use English characters.
+        """
+        filtered = bytearray()
 
-    def filter_with_english_letters(self, aBuf):
-        # TODO
-        return aBuf
+        # This regex expression filters out only words that have at-least one
+        # international character. The word may include one marker character at
+        # the end.
+        words = INTERNATIONAL_WORDS_PATTERN.findall(buf)
+
+        for word in words:
+            filtered.extend(word[:-1])
+
+            # If the last character in the word is a marker, replace it with a
+            # space as markers shouldn't affect our analysis (they are used
+            # similarly across all languages and may thus have similar
+            # frequencies).
+            last_char = word[-1:]
+            if not last_char.isalpha() and last_char < b"\x80":
+                last_char = b" "
+            filtered.extend(last_char)
+
+        return filtered
+
+    @staticmethod
+    def remove_xml_tags(buf: Union[bytes, bytearray]) -> bytes:
+        """
+        Returns a copy of ``buf`` that retains only the sequences of English
+        alphabet and high byte characters that are not between <> characters.
+        This filter can be applied to all scripts which contain both English
+        characters and extended ASCII characters, but is currently only used by
+        ``Latin1Prober``.
+        """
+        filtered = bytearray()
+        in_tag = False
+        prev = 0
+        buf = memoryview(buf).cast("c")
+
+        for curr, buf_char in enumerate(buf):
+            # Check if we're coming out of or entering an XML tag
+
+            # https://github.com/python/typeshed/issues/8182
+            if buf_char == b">":  # type: ignore[comparison-overlap]
+                prev = curr + 1
+                in_tag = False
+            # https://github.com/python/typeshed/issues/8182
+            elif buf_char == b"<":  # type: ignore[comparison-overlap]
+                if curr > prev and not in_tag:
+                    # Keep everything after last non-extended-ASCII,
+                    # non-alphabetic character
+                    filtered.extend(buf[prev:curr])
+                    # Output a space to delimit stretch we kept
+                    filtered.extend(b" ")
+                in_tag = True
+
+        # If we're not in a tag...
+        if not in_tag:
+            # Keep everything after last non-extended-ASCII, non-alphabetic
+            # character
+            filtered.extend(buf[prev:])
+
+        return filtered
