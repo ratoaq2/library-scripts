@@ -1,0 +1,14 @@
+plexy-0.1.0.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+plexy-0.1.0.dist-info/METADATA,sha256=xFRAEl-BTpF5Tv3565-MoE_Gjtj2k9xdk2y3dQuMOUo,499
+plexy-0.1.0.dist-info/RECORD,,
+plexy-0.1.0.dist-info/REQUESTED,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+plexy-0.1.0.dist-info/WHEEL,sha256=vVCvjcmxuUltf8cYhJ0sJMRDLr1XsPuxEId8YDzbyCY,88
+plexy-0.1.0.dist-info/direct_url.json,sha256=mGK0DE_GuKdB0kiWsPnApbBsWkeDwjRWFtTUxGv0y-0,81
+plexy/__init__.py,sha256=MHLRqNbBvLt0sqoIr_b2dVoBlMtrXEnnx2SMrre-EHg,94
+plexy/__pycache__/__init__.cpython-310.pyc,,
+plexy/__pycache__/api.cpython-310.pyc,,
+plexy/__pycache__/cli.cpython-310.pyc,,
+plexy/__pycache__/language.cpython-310.pyc,,
+plexy/api.py,sha256=nDTw_OiwPHKSOuVWm2xgYI5BYeblzq6GFVlYRo3oda0,7790
+plexy/cli.py,sha256=buqFYahfidF9KQip5GYA9o6AHqv0FZlbbTjIBMySwcg,4113
+plexy/language.py,sha256=tgqG91mLWLA-e4SG7NddrHUorZJw5a9UhDAQU1sovGc,3490

@@ -1,0 +1,15 @@
+Metadata-Version: 2.1
+Name: plexy
+Version: 0.1.0
+Summary: 
+Author: Your Name
+Author-email: you@example.com
+Requires-Python: >=3.8.1,<4.0.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Dist: PlexAPI (>=4.12.1,<5.0.0)
+Requires-Dist: babelfish (>=0.6.0,<0.7.0)
+Requires-Dist: click (>=8.1.3,<9.0.0)
+Requires-Dist: trakit (>=0.2.1,<0.3.0)
