@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: plexy
-Version: 0.1.0
+Version: 0.1.1
 Summary: Your Plex, your way
 Home-page: https://github.com/ratoaq2/plexy
 License: MIT
@@ -26,8 +26,10 @@ Classifier: Programming Language :: Python :: 3.9
 Classifier: Topic :: Multimedia :: Video
 Classifier: Topic :: Software Development :: Libraries :: Python Modules
 Requires-Dist: PlexAPI (>=4.12.1,<5.0.0)
+Requires-Dist: appdirs (>=1.4.4,<2.0.0)
 Requires-Dist: babelfish (>=0.6.0,<0.7.0)
 Requires-Dist: click (>=8.1.3,<9.0.0)
+Requires-Dist: pyyaml (>=6.0,<7.0)
 Requires-Dist: trakit (>=0.2.1,<0.3.0)
 Project-URL: Repository, https://github.com/ratoaq2/plexy
 Description-Content-Type: text/markdown
@@ -110,7 +112,38 @@ You can exclude this codec when saving your preferences:
 
 And print the full summary of changes:
 ```bash
->> plexy --url http://ratostation.nas:32400 --token FLRJstK4r4TiR4_Soafq preferences -f -l en --title "The Matrix (1999)" original
+>> plexy --url http://mylocalplex:32400 --token ABCDEFGHIJ1234567890 preferences -f -l en --title "The Matrix (1999)" original
+Configuring watching preferences  [####################################]  100%
+1 movie changed out of 1 selected movie
+The Matrix (1999) changed from pt-BR: Português (SRT External) to no subtitles
+```
+
+
+You can also define your configuration options in a `json` or `yaml` file:
+```yaml
+url: http://myplexserver:32400
+token: ABCDEFGHIJ1234567890
+preferences:
+  library:
+    - Movies
+    - TV Shows
+  excluded_subtitle_codec:
+    - eia_608
+  full_summary: True
+  language: pt-BR
+  watching_preference: original
+```
+
+By default, plexy will load `config.json`, `config.yaml` or `config.yml` file from the folders:
+- Mac OS: `~/Library/Preferences/plexy`
+- Linux: `~/.config/plexy/`
+- Windows: `C:\Users\<USER>\AppData\Local\plexy\plexy`
+
+And then update the configuration with data from `plexy.json`, `plexy.yaml` or `plexy.yml` in the current working directory.
+
+You can pass the configuration to use with the `--config` parameter:
+```bash
+>> plexy --config myconfig.yml preferences
 Configuring watching preferences  [####################################]  100%
 1 movie changed out of 1 selected movie
 The Matrix (1999) changed from pt-BR: Português (SRT External) to no subtitles
