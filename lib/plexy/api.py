@@ -130,14 +130,16 @@ class Settings:
 class Criteria:
 
     def __init__(self,
-                 libraries: typing.List[str],
-                 titles: typing.List[Title],
-                 newer: typing.Optional[str],
-                 older: typing.Optional[str]):
-        self.libraries = libraries
-        self.titles = titles
-        self.newer = newer
-        self.older = older
+                 libraries: typing.Optional[typing.Iterable[str]] = None,
+                 titles: typing.Optional[typing.Iterable[Title]] = None,
+                 newer_than: typing.Optional[str] = None,
+                 older_than: typing.Optional[str] = None,
+                 skip_watching=False):
+        self.libraries = list(libraries or [])
+        self.titles = list(titles or [])
+        self.newer_than = newer_than
+        self.older_than = older_than
+        self.skip_watching = skip_watching
 
     def __matching_titles(self, lib_type: LibraryType):
         if lib_type == LibraryType.MOVIE:
@@ -147,10 +149,10 @@ class Criteria:
 
     def __to_filter(self, names: typing.Union[str, typing.List[str]], lib_type: LibraryType):
         filters: typing.Dict[str, typing.Any] = {}
-        if self.newer:
-            filters['addedAt>>'] = self.newer
-        if self.older:
-            filters['addedAt<<'] = self.older
+        if self.newer_than:
+            filters['addedAt>>'] = self.newer_than
+        if self.older_than:
+            filters['addedAt<<'] = self.older_than
         if names:
             prefix = 'show' if lib_type == LibraryType.EPISODE else 'movie'
             filters[f'{prefix}.title'] = names
@@ -188,13 +190,15 @@ class Criteria:
     def __str__(self):
         text = ''
         if self.libraries:
-            text += f' in {",".join(self.libraries)}'
+            text += f' in {", ".join(self.libraries)}'
         if self.titles:
             text += ' or'.join([f' with title "{t}"' for t in self.titles])
-        if self.newer:
-            text += f' newer than {self.newer}'
-        if self.older:
-            text += f' older than {self.older}'
+        if self.newer_than:
+            text += f' newer than {self.newer_than}'
+        if self.older_than:
+            text += f' older than {self.older_than}'
+        if self.skip_watching:
+            text += ' skipping "Continue Watching"'
         return text.strip()
 
 
@@ -206,13 +210,19 @@ class Preferences:
                  audio_codecs: typing.Set[str],
                  excluded_audio_codecs: typing.Set[str],
                  subtitle_codecs: typing.Set[str],
-                 excluded_subtitle_codecs: typing.Set[str]):
+                 excluded_subtitle_codecs: typing.Set[str],
+                 keep_selected_audio: bool,
+                 keep_selected_subtitle: bool,
+                 force_subtitles: bool):
         self.watching_preference = watching_preference
         self.language = language
         self.audio_codecs = audio_codecs
         self.excluded_audio_codecs = excluded_audio_codecs
         self.subtitle_codecs = subtitle_codecs
         self.excluded_subtitle_codecs = excluded_subtitle_codecs
+        self.keep_selected_audio = keep_selected_audio
+        self.keep_selected_subtitle = keep_selected_subtitle
+        self.force_subtitles = force_subtitles
 
     def __repr__(self):
         return f'<{self.__class__.__name__} [{self.watching_preference}]>'
@@ -222,6 +232,10 @@ class Video:
 
     def __init__(self, video: plexapi.video.Video):
         self.video = video
+
+    @staticmethod
+    def accept(video: typing.Union[plexapi.video.Movie, plexapi.video.Episode], criteria: Criteria):
+        return not criteria.skip_watching or not video.viewOffset
 
     @property
     def title(self):
@@ -249,6 +263,14 @@ class Video:
                     changes.append(change)
 
         return changes
+
+    def __eq__(self, other):
+        if isinstance(other, Video):
+            return self.video == other.video
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(tuple(sorted(self.__dict__.items())))
 
     def __str__(self):
         return f'{self.title}'
@@ -305,11 +327,13 @@ class Stream:
 
     @property
     def codec(self):
-        return self.stream.codec
+        if self.stream.codec:
+            return AudioCodec(self.stream.codec)
 
     @property
     def format(self):
-        return self.subtitle_stream.format if self.subtitle_stream else None
+        if self.subtitle_stream and self.subtitle_stream.format:
+            return SubtitleCodec(self.subtitle_stream.format)
 
     @property
     def audio_stream(self):
@@ -415,31 +439,36 @@ class VideoPart:
     def select_subtitle(self, selection: Stream):
         self.part.setDefaultSubtitleStream(selection.subtitle_stream)
 
-    def get_sorted_audio_streams(self, preferences: Preferences):
+    def choose_audio_track(self, preferences: Preferences):
+        if preferences.keep_selected_audio:
+            return self.selected_audio
+
         target_language = preferences.language if (
                 preferences.watching_preference == WatchingPreference.DUBBED) else self.original_language
         language_cmp = VideoPart.__get_lang_cmp(target_language)
 
-        return sorted([audio for audio in self.audio_streams if (
+        streams = sorted([audio for audio in self.audio_streams if (
                 not preferences.audio_codecs or audio.codec in preferences.audio_codecs)
                          and audio.codec not in preferences.excluded_audio_codecs],
                       key=functools.cmp_to_key(language_cmp))
 
-    def get_sorted_subtitle_streams(self, preferences: Preferences):
+        return streams[0] if streams else self.selected_audio
+
+    def choose_subtitle_track(self, preferences: Preferences):
         language_cmp = VideoPart.__get_lang_cmp(preferences.language)
 
-        return sorted([subtitle for subtitle in self.subtitle_streams if (
+        streams = sorted([subtitle for subtitle in self.subtitle_streams if (
                 not preferences.subtitle_codecs or subtitle.format in preferences.subtitle_codecs)
                       and subtitle.format not in preferences.excluded_subtitle_codecs],
                       key=functools.cmp_to_key(language_cmp))
 
+        return streams[0] if streams else self.selected_subtitle
+
     def save_preferences(self, preferences: Preferences):
         previous_selected_audio = self.selected_audio
         previous_selected_subtitle = self.selected_subtitle
-        selected_subtitle = previous_selected_subtitle
 
-        audio_streams = self.get_sorted_audio_streams(preferences)
-        selected_audio = audio_streams[0] if audio_streams else previous_selected_audio
+        selected_audio = self.choose_audio_track(preferences)
         if selected_audio != previous_selected_audio:
             logger.debug('%s - new audio track in %s selected: %s',
                          self.title,
@@ -448,20 +477,21 @@ class VideoPart:
             self.select_audio(selected_audio)
 
         selected_audio_lang = selected_audio.language if selected_audio else None
-        if selected_audio_lang == preferences.language:
-            if previous_selected_subtitle:
-                logger.debug('%s - no subtitle selected', self.title)
-                self.unselect_subtitle()
-                selected_subtitle = None
-        else:
-            subtitle_streams = self.get_sorted_subtitle_streams(preferences)
-            selected_subtitle = subtitle_streams[0] if len(subtitle_streams) else previous_selected_subtitle
+        selected_subtitle = previous_selected_subtitle
+        if preferences.keep_selected_subtitle and selected_subtitle:
+            pass
+        elif selected_audio_lang != preferences.language or preferences.force_subtitles:
+            selected_subtitle = self.choose_subtitle_track(preferences)
             if selected_subtitle != previous_selected_subtitle:
                 logger.debug('%s new subtitle in %s selected: %s',
                              self.title,
                              selected_subtitle.language,
                              selected_subtitle)
                 self.select_subtitle(selected_subtitle)
+        elif previous_selected_subtitle:
+            logger.debug('%s - no subtitle selected', self.title)
+            self.unselect_subtitle()
+            selected_subtitle = None
 
         if selected_audio != previous_selected_audio or selected_subtitle != previous_selected_subtitle:
             return Change(self, previous_selected_audio, previous_selected_subtitle, selected_audio, selected_subtitle)
@@ -494,16 +524,23 @@ class Change:
 class Plex:
 
     def __init__(self, settings: Settings):
-        self.plex = plexapi.server.PlexServer(baseurl=settings.url, token=settings.token)
-        logger.debug('Connected to %s', settings.url)
+        self.settings = settings
+        self._plex: typing.Optional[plexapi.server.PlexServer] = None
+
+    @property
+    def server(self):
+        if self._plex is None:
+            logger.debug('Connected to %s', self.settings.url)
+            self._plex = plexapi.server.PlexServer(baseurl=self.settings.url, token=self.settings.token)
+        return self._plex
 
     def __find_sections(self, criteria: Criteria):
         if not criteria.libraries:
-            return self.plex.library.sections()
+            return self.server.library.sections()
 
         sections: typing.List[plexapi.library.LibrarySection] = []
         for library in criteria.libraries:
-            sections.append(self.plex.library.section(library))
+            sections.append(self.server.library.section(library))
 
         return sections
 
@@ -518,13 +555,13 @@ class Plex:
                 for filters in filters_list:
                     episodes: typing.List[plexapi.video.Episode] = section.all(libtype='episode', filters=filters)
                     logger.debug('Found %d episodes in section %s', len(episodes), section.title)
-                    results.extend([Video(e) for e in episodes])
+                    results.extend([Video(e) for e in episodes if Video.accept(e, criteria)])
 
             if section.type == 'movie':
                 filters_list = criteria.to_filters(LibraryType.MOVIE)
                 for filters in filters_list:
                     movies: typing.List[plexapi.video.Movie] = section.all(libtype='movie', filters=filters)
                     logger.debug('Found %d movies in section %s', len(movies), section.title)
-                    results.extend([Video(m) for m in movies])
+                    results.extend([Video(m) for m in movies if Video.accept(m, criteria)])
 
         return results
