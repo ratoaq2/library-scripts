@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
+
 import os
+from pathlib import Path
 from urllib.parse import quote_plus
 
+from typing import Any, Dict, List, Optional, TypeVar
+
 from plexapi import media, utils
-from plexapi.base import Playable, PlexPartialObject, PlexSession
-from plexapi.exceptions import BadRequest, NotFound
+from plexapi.base import Playable, PlexPartialObject, PlexHistory, PlexSession
+from plexapi.exceptions import BadRequest
 from plexapi.mixins import (
     AdvancedSettingsMixin, SplitMergeMixin, UnmatchMatchMixin, ExtrasMixin, HubsMixin, PlayedUnplayedMixin, RatingMixin,
     ArtUrlMixin, ArtMixin, PosterUrlMixin, PosterMixin, ThemeMixin, ThemeUrlMixin,
-    OriginallyAvailableMixin, SortTitleMixin, StudioMixin, SummaryMixin, TitleMixin,
-    TrackArtistMixin, TrackDiscNumberMixin, TrackNumberMixin,
-    CollectionMixin, CountryMixin, GenreMixin, LabelMixin, MoodMixin, SimilarArtistMixin, StyleMixin
+    ArtistEditMixins, AlbumEditMixins, TrackEditMixins
 )
 from plexapi.playlist import Playlist
+
+
+TAudio = TypeVar("TAudio", bound="Audio")
+TTrack = TypeVar("TTrack", bound="Track")
 
 
 class Audio(PlexPartialObject, PlayedUnplayedMixin):
@@ -23,6 +30,7 @@ class Audio(PlexPartialObject, PlayedUnplayedMixin):
             addedAt (datetime): Datetime the item was added to the library.
             art (str): URL to artwork image (/library/metadata/<ratingKey>/art/<artid>).
             artBlurHash (str): BlurHash string for artwork image.
+            distance (float): Sonic Distance of the item from the seed item.
             fields (List<:class:`~plexapi.media.Field`>): List of field objects.
             guid (str): Plex GUID for the artist, album, or track (plex://artist/5d07bcb0403c64029053ac4c).
             index (int): Plex index number (often the track number).
@@ -54,6 +62,7 @@ class Audio(PlexPartialObject, PlayedUnplayedMixin):
         self.addedAt = utils.toDatetime(data.attrib.get('addedAt'))
         self.art = data.attrib.get('art')
         self.artBlurHash = data.attrib.get('artBlurHash')
+        self.distance = utils.cast(float, data.attrib.get('distance'))
         self.fields = self.findItems(data, media.Field)
         self.guid = data.attrib.get('guid')
         self.index = utils.cast(int, data.attrib.get('index'))
@@ -126,14 +135,44 @@ class Audio(PlexPartialObject, PlayedUnplayedMixin):
 
         return myplex.sync(sync_item, client=client, clientId=clientId)
 
+    def sonicallySimilar(
+        self: TAudio,
+        limit: Optional[int] = None,
+        maxDistance: Optional[float] = None,
+        **kwargs,
+    ) -> List[TAudio]:
+        """Returns a list of sonically similar audio items.
+
+        Parameters:
+            limit (int): Maximum count of items to return. Default 50 (server default)
+            maxDistance (float): Maximum distance between tracks, 0.0 - 1.0. Default 0.25 (server default).
+            **kwargs: Additional options passed into :func:`~plexapi.base.PlexObject.fetchItems`.
+
+        Returns:
+            List[:class:`~plexapi.audio.Audio`]: list of sonically similar audio items.
+        """
+
+        key = f"{self.key}/nearest"
+        params: Dict[str, Any] = {}
+        if limit is not None:
+            params['limit'] = limit
+        if maxDistance is not None:
+            params['maxDistance'] = maxDistance
+        key += utils.joinArgs(params)
+
+        return self.fetchItems(
+            key,
+            cls=type(self),
+            **kwargs,
+        )
+
 
 @utils.registerPlexObject
 class Artist(
     Audio,
     AdvancedSettingsMixin, SplitMergeMixin, UnmatchMatchMixin, ExtrasMixin, HubsMixin, RatingMixin,
     ArtMixin, PosterMixin, ThemeMixin,
-    SortTitleMixin, SummaryMixin, TitleMixin,
-    CollectionMixin, CountryMixin, GenreMixin, LabelMixin, MoodMixin, SimilarArtistMixin, StyleMixin
+    ArtistEditMixins
 ):
     """ Represents a single Artist.
 
@@ -142,6 +181,7 @@ class Artist(
             TYPE (str): 'artist'
             albumSort (int): Setting that indicates how albums are sorted for the artist
                 (-1 = Library default, 0 = Newest first, 1 = Oldest first, 2 = By name).
+            audienceRating (float): Audience rating.
             collections (List<:class:`~plexapi.media.Collection`>): List of collection objects.
             countries (List<:class:`~plexapi.media.Country`>): List country objects.
             genres (List<:class:`~plexapi.media.Genre`>): List of genre objects.
@@ -149,6 +189,7 @@ class Artist(
             key (str): API URL (/library/metadata/<ratingkey>).
             labels (List<:class:`~plexapi.media.Label`>): List of label objects.
             locations (List<str>): List of folder paths where the artist is found on disk.
+            rating (float): Artist rating (7.9; 9.8; 8.1).
             similar (List<:class:`~plexapi.media.Similar`>): List of similar objects.
             styles (List<:class:`~plexapi.media.Style`>): List of style objects.
             theme (str): URL to theme resource (/library/metadata/<ratingkey>/theme/<themeid>).
@@ -160,6 +201,7 @@ class Artist(
         """ Load attribute values from Plex XML response. """
         Audio._loadData(self, data)
         self.albumSort = utils.cast(int, data.attrib.get('albumSort', '-1'))
+        self.audienceRating = utils.cast(float, data.attrib.get('audienceRating'))
         self.collections = self.findItems(data, media.Collection)
         self.countries = self.findItems(data, media.Country)
         self.genres = self.findItems(data, media.Genre)
@@ -167,6 +209,7 @@ class Artist(
         self.key = self.key.replace('/children', '')  # FIX_BUG_50
         self.labels = self.findItems(data, media.Label)
         self.locations = self.listAttrs(data, 'path', etag='Location')
+        self.rating = utils.cast(float, data.attrib.get('rating'))
         self.similar = self.findItems(data, media.Similar)
         self.styles = self.findItems(data, media.Style)
         self.theme = data.attrib.get('theme')
@@ -181,14 +224,19 @@ class Artist(
             Parameters:
                 title (str): Title of the album to return.
         """
-        try:
-            return self.section().search(title, libtype='album', filters={'artist.id': self.ratingKey})[0]
-        except IndexError:
-            raise NotFound(f"Unable to find album '{title}'") from None
+        return self.section().get(
+            title=title,
+            libtype='album',
+            filters={'artist.id': self.ratingKey}
+        )
 
     def albums(self, **kwargs):
         """ Returns a list of :class:`~plexapi.audio.Album` objects by the artist. """
-        return self.section().search(libtype='album', filters={'artist.id': self.ratingKey}, **kwargs)
+        return self.section().search(
+            libtype='album',
+            filters={**kwargs.pop('filters', {}), 'artist.id': self.ratingKey},
+            **kwargs
+        )
 
     def track(self, title=None, album=None, track=None):
         """ Returns the :class:`~plexapi.audio.Track` that matches the specified title.
@@ -238,20 +286,26 @@ class Artist(
         key = f'{self.key}?includeStations=1'
         return next(iter(self.fetchItems(key, cls=Playlist, rtag="Stations")), None)
 
+    @property
+    def metadataDirectory(self):
+        """ Returns the Plex Media Server data directory where the metadata is stored. """
+        guid_hash = utils.sha1hash(self.guid)
+        return str(Path('Metadata') / 'Artists' / guid_hash[0] / f'{guid_hash[1:]}.bundle')
+
 
 @utils.registerPlexObject
 class Album(
     Audio,
-    UnmatchMatchMixin, RatingMixin,
+    SplitMergeMixin, UnmatchMatchMixin, RatingMixin,
     ArtMixin, PosterMixin, ThemeUrlMixin,
-    OriginallyAvailableMixin, SortTitleMixin, StudioMixin, SummaryMixin, TitleMixin,
-    CollectionMixin, GenreMixin, LabelMixin, MoodMixin, StyleMixin
+    AlbumEditMixins
 ):
     """ Represents a single Album.
 
         Attributes:
             TAG (str): 'Directory'
             TYPE (str): 'album'
+            audienceRating (float): Audience rating.
             collections (List<:class:`~plexapi.media.Collection`>): List of collection objects.
             formats (List<:class:`~plexapi.media.Format`>): List of format objects.
             genres (List<:class:`~plexapi.media.Genre`>): List of genre objects.
@@ -280,6 +334,7 @@ class Album(
     def _loadData(self, data):
         """ Load attribute values from Plex XML response. """
         Audio._loadData(self, data)
+        self.audienceRating = utils.cast(float, data.attrib.get('audienceRating'))
         self.collections = self.findItems(data, media.Collection)
         self.formats = self.findItems(data, media.Format)
         self.genres = self.findItems(data, media.Genre)
@@ -358,23 +413,31 @@ class Album(
         """ Returns str, default title for a new syncItem. """
         return f'{self.parentTitle} - {self.title}'
 
+    @property
+    def metadataDirectory(self):
+        """ Returns the Plex Media Server data directory where the metadata is stored. """
+        guid_hash = utils.sha1hash(self.guid)
+        return str(Path('Metadata') / 'Albums' / guid_hash[0] / f'{guid_hash[1:]}.bundle')
+
 
 @utils.registerPlexObject
 class Track(
     Audio, Playable,
     ExtrasMixin, RatingMixin,
     ArtUrlMixin, PosterUrlMixin, ThemeUrlMixin,
-    TitleMixin, TrackArtistMixin, TrackNumberMixin, TrackDiscNumberMixin,
-    CollectionMixin, LabelMixin, MoodMixin
+    TrackEditMixins
 ):
     """ Represents a single Track.
 
         Attributes:
             TAG (str): 'Directory'
             TYPE (str): 'track'
+            audienceRating (float): Audience rating.
+            chapters (List<:class:`~plexapi.media.Chapter`>): List of Chapter objects.
             chapterSource (str): Unknown
             collections (List<:class:`~plexapi.media.Collection`>): List of collection objects.
             duration (int): Length of the track in milliseconds.
+            genres (List<:class:`~plexapi.media.Genre`>): List of genre objects.
             grandparentArt (str): URL to album artist artwork (/library/metadata/<grandparentRatingKey>/art/<artid>).
             grandparentGuid (str): Plex GUID for the album artist (plex://artist/5d07bcb0403c64029053ac4c).
             grandparentKey (str): API URL of the album artist (/library/metadata/<grandparentRatingKey>).
@@ -395,8 +458,11 @@ class Track(
             parentThumb (str): URL to album thumbnail image (/library/metadata/<parentRatingKey>/thumb/<thumbid>).
             parentTitle (str): Name of the album for the track.
             primaryExtraKey (str) API URL for the primary extra for the track.
+            rating (float): Track rating (7.9; 9.8; 8.1).
             ratingCount (int): Number of listeners who have scrobbled this track, as reported by Last.fm.
             skipCount (int): Number of times the track has been skipped.
+            sourceURI (str): Remote server URI (server://<machineIdentifier>/com.plexapp.plugins.library)
+                (remote playlist item only).
             viewOffset (int): View offset in milliseconds.
             year (int): Year the track was released.
     """
@@ -407,9 +473,12 @@ class Track(
         """ Load attribute values from Plex XML response. """
         Audio._loadData(self, data)
         Playable._loadData(self, data)
+        self.audienceRating = utils.cast(float, data.attrib.get('audienceRating'))
+        self.chapters = self.findItems(data, media.Chapter)
         self.chapterSource = data.attrib.get('chapterSource')
         self.collections = self.findItems(data, media.Collection)
         self.duration = utils.cast(int, data.attrib.get('duration'))
+        self.genres = self.findItems(data, media.Genre)
         self.grandparentArt = data.attrib.get('grandparentArt')
         self.grandparentGuid = data.attrib.get('grandparentGuid')
         self.grandparentKey = data.attrib.get('grandparentKey')
@@ -428,22 +497,12 @@ class Track(
         self.parentThumb = data.attrib.get('parentThumb')
         self.parentTitle = data.attrib.get('parentTitle')
         self.primaryExtraKey = data.attrib.get('primaryExtraKey')
+        self.rating = utils.cast(float, data.attrib.get('rating'))
         self.ratingCount = utils.cast(int, data.attrib.get('ratingCount'))
         self.skipCount = utils.cast(int, data.attrib.get('skipCount'))
+        self.sourceURI = data.attrib.get('source')  # remote playlist item
         self.viewOffset = utils.cast(int, data.attrib.get('viewOffset', 0))
         self.year = utils.cast(int, data.attrib.get('year'))
-
-    def _prettyfilename(self):
-        """ Returns a filename for use in download. """
-        return f'{self.grandparentTitle} - {self.parentTitle} - {str(self.trackNumber).zfill(2)} - {self.title}'
-
-    def album(self):
-        """ Return the track's :class:`~plexapi.audio.Album`. """
-        return self.fetchItem(self.parentKey)
-
-    def artist(self):
-        """ Return the track's :class:`~plexapi.audio.Artist`. """
-        return self.fetchItem(self.grandparentKey)
 
     @property
     def locations(self):
@@ -460,6 +519,18 @@ class Track(
         """ Returns the track number. """
         return self.index
 
+    def _prettyfilename(self):
+        """ Returns a filename for use in download. """
+        return f'{self.grandparentTitle} - {self.parentTitle} - {str(self.trackNumber).zfill(2)} - {self.title}'
+
+    def album(self):
+        """ Return the track's :class:`~plexapi.audio.Album`. """
+        return self.fetchItem(self.parentKey)
+
+    def artist(self):
+        """ Return the track's :class:`~plexapi.audio.Artist`. """
+        return self.fetchItem(self.grandparentKey)
+
     def _defaultSyncTitle(self):
         """ Returns str, default title for a new syncItem. """
         return f'{self.grandparentTitle} - {self.parentTitle} - {self.title}'
@@ -467,6 +538,28 @@ class Track(
     def _getWebURL(self, base=None):
         """ Get the Plex Web URL with the correct parameters. """
         return self._server._buildWebURL(base=base, endpoint='details', key=self.parentKey)
+
+    @property
+    def metadataDirectory(self):
+        """ Returns the Plex Media Server data directory where the metadata is stored. """
+        guid_hash = utils.sha1hash(self.parentGuid)
+        return str(Path('Metadata') / 'Albums' / guid_hash[0] / f'{guid_hash[1:]}.bundle')
+
+    def sonicAdventure(
+        self: TTrack,
+        to: TTrack,
+        **kwargs: Any,
+    ) -> list[TTrack]:
+        """Returns a sonic adventure from the current track to the specified track.
+
+        Parameters:
+            to (:class:`~plexapi.audio.Track`): The target track for the sonic adventure.
+            **kwargs: Additional options passed into :func:`~plexapi.library.MusicSection.sonicAdventure`.
+
+        Returns:
+            List[:class:`~plexapi.audio.Track`]: list of tracks in the sonic adventure.
+        """
+        return self.section().sonicAdventure(self, to, **kwargs)
 
 
 @utils.registerPlexObject
@@ -480,3 +573,16 @@ class TrackSession(PlexSession, Track):
         """ Load attribute values from Plex XML response. """
         Track._loadData(self, data)
         PlexSession._loadData(self, data)
+
+
+@utils.registerPlexObject
+class TrackHistory(PlexHistory, Track):
+    """ Represents a single Track history entry
+        loaded from :func:`~plexapi.server.PlexServer.history`.
+    """
+    _HISTORYTYPE = True
+
+    def _loadData(self, data):
+        """ Load attribute values from Plex XML response. """
+        Track._loadData(self, data)
+        PlexHistory._loadData(self, data)

@@ -6,12 +6,18 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from pprint import pformat
 from textwrap import dedent, indent
+from typing import TYPE_CHECKING, ClassVar
 import heapq
 import itertools
+import warnings
 
-import attr
+from attrs import define
+from referencing.exceptions import Unresolvable as _Unresolvable
 
 from jsonschema import _utils
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, MutableMapping
 
 WEAK_MATCHES: frozenset[str] = frozenset(["anyOf", "oneOf"])
 STRONG_MATCHES: frozenset[str] = frozenset()
@@ -19,10 +25,25 @@ STRONG_MATCHES: frozenset[str] = frozenset()
 _unset = _utils.Unset()
 
 
+def __getattr__(name):
+    if name == "RefResolutionError":
+        warnings.warn(
+            _RefResolutionError._DEPRECATION_MESSAGE,
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _RefResolutionError
+    raise AttributeError(f"module {__name__} has no attribute {name}")
+
+
 class _Error(Exception):
+
+    _word_for_schema_in_error_message: ClassVar[str]
+    _word_for_instance_in_error_message: ClassVar[str]
+
     def __init__(
         self,
-        message,
+        message: str,
         validator=_unset,
         path=(),
         cause=None,
@@ -34,7 +55,7 @@ class _Error(Exception):
         parent=None,
         type_checker=_unset,
     ):
-        super(_Error, self).__init__(
+        super().__init__(
             message,
             validator,
             path,
@@ -140,7 +161,7 @@ class _Error(Exception):
             "message", "cause", "context", "validator", "validator_value",
             "path", "schema_path", "instance", "schema", "parent",
         )
-        return dict((attr, getattr(self, attr)) for attr in attrs)
+        return {attr: getattr(self, attr) for attr in attrs}
 
     def _matches_type(self):
         try:
@@ -175,16 +196,51 @@ class SchemaError(_Error):
     _word_for_instance_in_error_message = "schema"
 
 
-@attr.s(hash=True)
-class RefResolutionError(Exception):
+@define(slots=False)
+class _RefResolutionError(Exception):
     """
     A ref could not be resolved.
     """
 
-    _cause = attr.ib()
+    _DEPRECATION_MESSAGE = (
+        "jsonschema.exceptions.RefResolutionError is deprecated as of version "
+        "4.18.0. If you wish to catch potential reference resolution errors, "
+        "directly catch referencing.exceptions.Unresolvable."
+    )
+
+    _cause: Exception
+
+    def __eq__(self, other):
+        if self.__class__ is not other.__class__:
+            return NotImplemented  # pragma: no cover -- uncovered but deprecated  # noqa: E501
+        return self._cause == other._cause
 
     def __str__(self):
         return str(self._cause)
+
+
+class _WrappedReferencingError(_RefResolutionError, _Unresolvable):  # pragma: no cover -- partially uncovered but to be removed  # noqa: E501
+    def __init__(self, cause: _Unresolvable):
+        object.__setattr__(self, "_wrapped", cause)
+
+    def __eq__(self, other):
+        if other.__class__ is self.__class__:
+            return self._wrapped == other._wrapped
+        elif other.__class__ is self._wrapped.__class__:
+            return self._wrapped == other
+        return NotImplemented
+
+    def __getattr__(self, attr):
+        return getattr(self._wrapped, attr)
+
+    def __hash__(self):
+        return hash(self._wrapped)
+
+    def __repr__(self):
+        return f"<WrappedReferencingError {self._wrapped!r}>"
+
+    def __str__(self):
+        return f"{self._wrapped.__class__.__name__}: {self._wrapped}"
 
 
 class UndefinedTypeCheck(Exception):
@@ -229,7 +285,7 @@ class FormatError(Exception):
     """
 
     def __init__(self, message, cause=None):
-        super(FormatError, self).__init__(message, cause)
+        super().__init__(message, cause)
         self.message = message
         self.cause = self.__cause__ = cause
 
@@ -244,9 +300,9 @@ class ErrorTree:
 
     _instance = _unset
 
-    def __init__(self, errors=()):
-        self.errors = {}
-        self._contents = defaultdict(self.__class__)
+    def __init__(self, errors: Iterable[ValidationError] = ()):
+        self.errors: MutableMapping[str, ValidationError] = {}
+        self._contents: Mapping[str, ErrorTree] = defaultdict(self.__class__)
 
         for error in errors:
             container = self
@@ -256,11 +312,10 @@ class ErrorTree:
 
             container._instance = error.instance
 
-    def __contains__(self, index):
+    def __contains__(self, index: str | int):
         """
         Check whether ``instance[index]`` has any errors.
         """
-
         return index in self._contents
 
     def __getitem__(self, index):
@@ -272,22 +327,31 @@ class ErrorTree:
         by ``instance.__getitem__`` will be propagated (usually this is
         some subclass of `LookupError`.
         """
-
         if self._instance is not _unset and index not in self:
             self._instance[index]
         return self._contents[index]
 
-    def __setitem__(self, index, value):
+    def __setitem__(self, index: str | int, value: ErrorTree):
         """
         Add an error to the tree at the given ``index``.
+
+        .. deprecated:: v4.20.0
+
+            Setting items on an `ErrorTree` is deprecated without replacement.
+            To populate a tree, provide all of its sub-errors when you
+            construct the tree.
         """
-        self._contents[index] = value
+        warnings.warn(
+            "ErrorTree.__setitem__ is deprecated without replacement.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._contents[index] = value  # type: ignore[index]
 
     def __iter__(self):
         """
         Iterate (non-recursively) over the indices in the instance with errors.
         """
-
         return iter(self._contents)
 
     def __len__(self):
@@ -306,7 +370,6 @@ class ErrorTree:
         """
         The total number of errors in the entire tree, including children.
         """
-
         child_errors = sum(len(tree) for _, tree in self._contents.items())
         return len(self.errors) + child_errors
 
@@ -327,19 +390,32 @@ def by_relevance(weak=WEAK_MATCHES, strong=STRONG_MATCHES):
         strong (set):
             a collection of validation keywords to consider to be
             "strong"
+
     """
+
     def relevance(error):
         validator = error.validator
-        return (
-            -len(error.path),
-            validator not in weak,
-            validator in strong,
-            not error._matches_type(),
-        )
+        return (                        # prefer errors which are ...
+            -len(error.path),           # 'deeper' and thereby more specific
+            error.path,                 # earlier (for sibling errors)
+            validator not in weak,      # for a non-low-priority keyword
+            validator in strong,        # for a high priority keyword
+            not error._matches_type(),  # at least match the instance's type
+        )                               # otherwise we'll treat them the same
+
     return relevance
 
 
 relevance = by_relevance()
+"""
+A key function (e.g. to use with `sorted`) which sorts errors by relevance.
+
+Example:
+
+.. code:: python
+
+    sorted(validator.iter_errors(12), key=jsonschema.exceptions.relevance)
+"""
 
 
 def best_match(errors, key=relevance):
@@ -379,6 +455,7 @@ def best_match(errors, key=relevance):
 
         This function is a heuristic. Its return value may change for a given
         set of inputs from version to version if better heuristics are added.
+
     """
     errors = iter(errors)
     best = next(errors, None)
@@ -390,7 +467,7 @@ def best_match(errors, key=relevance):
         # Calculate the minimum via nsmallest, because we don't recurse if
         # all nested errors have the same relevance (i.e. if min == max == all)
         smallest = heapq.nsmallest(2, best.context, key=key)
-        if len(smallest) == 2 and key(smallest[0]) == key(smallest[1]):
+        if len(smallest) == 2 and key(smallest[0]) == key(smallest[1]):  # noqa: PLR2004
             return best
         best = smallest[0]
     return best

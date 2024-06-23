@@ -23,13 +23,14 @@ X_PLEX_ENABLE_FAST_CONNECT = CONFIG.get('plexapi.enable_fast_connect', False, bo
 
 # Plex Header Configuration
 X_PLEX_PROVIDES = CONFIG.get('header.provides', 'controller')
-X_PLEX_PLATFORM = CONFIG.get('header.platform', CONFIG.get('header.platform', uname()[0]))
+X_PLEX_PLATFORM = CONFIG.get('header.platform', uname()[0])
 X_PLEX_PLATFORM_VERSION = CONFIG.get('header.platform_version', uname()[2])
 X_PLEX_PRODUCT = CONFIG.get('header.product', PROJECT)
 X_PLEX_VERSION = CONFIG.get('header.version', VERSION)
 X_PLEX_DEVICE = CONFIG.get('header.device', X_PLEX_PLATFORM)
 X_PLEX_DEVICE_NAME = CONFIG.get('header.device_name', uname()[1])
 X_PLEX_IDENTIFIER = CONFIG.get('header.identifier', str(hex(getnode())))
+X_PLEX_LANGUAGE = CONFIG.get('header.language', 'en')
 BASE_HEADERS = reset_base_headers()
 
 # Logging Configuration

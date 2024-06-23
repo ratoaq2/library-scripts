@@ -11,23 +11,21 @@ import unicodedata
 import warnings
 import zipfile
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from getpass import getpass
+from hashlib import sha1
 from threading import Event, Thread
 from urllib.parse import quote
 
 import requests
-from plexapi.exceptions import BadRequest, NotFound
+from requests.status_codes import _codes as codes
+
+from plexapi.exceptions import BadRequest, NotFound, Unauthorized
 
 try:
     from tqdm import tqdm
 except ImportError:
     tqdm = None
-
-try:
-    from functools import cached_property
-except ImportError:
-    from backports.cached_property import cached_property  # noqa: F401
 
 log = logging.getLogger('plexapi')
 
@@ -53,6 +51,8 @@ SEARCHTYPES = {
     'optimizedVersion': 42,
     'userPlaylistItem': 1001,
 }
+REVERSESEARCHTYPES = {v: k for k, v in SEARCHTYPES.items()}
+
 # Tag Types - Plex uses these to filter specific tags when searching.
 TAGTYPES = {
     'tag': 0,
@@ -91,6 +91,8 @@ TAGTYPES = {
     'network': 319,
     'place': 400,
 }
+REVERSETAGTYPES = {v: k for k, v in TAGTYPES.items()}
+
 # Plex Objects - Populated at runtime
 PLEXOBJECTS = {}
 
@@ -102,7 +104,7 @@ class SecretsFilter(logging.Filter):
         self.secrets = secrets or set()
 
     def add_secret(self, secret):
-        if secret is not None:
+        if secret is not None and secret != '':
             self.secrets.add(secret)
         return secret
 
@@ -124,12 +126,27 @@ def registerPlexObject(cls):
     etype = getattr(cls, 'STREAMTYPE', getattr(cls, 'TAGTYPE', cls.TYPE))
     ehash = f'{cls.TAG}.{etype}' if etype else cls.TAG
     if getattr(cls, '_SESSIONTYPE', None):
-        ehash = f"{ehash}.{'session'}"
+        ehash = f"{ehash}.session"
+    elif getattr(cls, '_HISTORYTYPE', None):
+        ehash = f"{ehash}.history"
     if ehash in PLEXOBJECTS:
         raise Exception(f'Ambiguous PlexObject definition {cls.__name__}(tag={cls.TAG}, type={etype}) '
                         f'with {PLEXOBJECTS[ehash].__name__}')
     PLEXOBJECTS[ehash] = cls
     return cls
+
+
+def getPlexObject(ehash, default):
+    """ Return the PlexObject class for the specified ehash. This recursively looks up the class
+        with the highest specificity, falling back to the default class if not found.
+    """
+    cls = PLEXOBJECTS.get(ehash)
+    if cls is not None:
+        return cls
+    if '.' in ehash:
+        ehash = ehash.rsplit('.', 1)[0]
+        return getPlexObject(ehash, default=default)
+    return PLEXOBJECTS.get(default)
 
 
 def cast(func, value):
@@ -140,22 +157,21 @@ def cast(func, value):
             func (func): Callback function to used cast to type (int, bool, float).
             value (any): value to be cast and returned.
     """
-    if value is not None:
-        if func == bool:
-            if value in (1, True, "1", "true"):
-                return True
-            elif value in (0, False, "0", "false"):
-                return False
-            else:
-                raise ValueError(value)
+    if value is None:
+        return value
+    if func == bool:
+        if value in (1, True, "1", "true"):
+            return True
+        if value in (0, False, "0", "false"):
+            return False
+        raise ValueError(value)
 
-        elif func in (int, float):
-            try:
-                return func(value)
-            except ValueError:
-                return float('nan')
-        return func(value)
-    return value
+    if func in (int, float):
+        try:
+            return func(value)
+        except ValueError:
+            return float('nan')
+    return func(value)
 
 
 def joinArgs(args):
@@ -219,11 +235,12 @@ def searchType(libtype):
             :exc:`~plexapi.exceptions.NotFound`: Unknown libtype
     """
     libtype = str(libtype)
-    if libtype in [str(v) for v in SEARCHTYPES.values()]:
-        return libtype
-    if SEARCHTYPES.get(libtype) is not None:
+    try:
         return SEARCHTYPES[libtype]
-    raise NotFound(f'Unknown libtype: {libtype}')
+    except KeyError:
+        if libtype in [str(k) for k in REVERSESEARCHTYPES]:
+            return libtype
+        raise NotFound(f'Unknown libtype: {libtype}') from None
 
 
 def reverseSearchType(libtype):
@@ -235,13 +252,12 @@ def reverseSearchType(libtype):
         Raises:
             :exc:`~plexapi.exceptions.NotFound`: Unknown libtype
     """
-    if libtype in SEARCHTYPES:
-        return libtype
-    libtype = int(libtype)
-    for k, v in SEARCHTYPES.items():
-        if libtype == v:
-            return k
-    raise NotFound(f'Unknown libtype: {libtype}')
+    try:
+        return REVERSESEARCHTYPES[int(libtype)]
+    except (KeyError, ValueError):
+        if libtype in SEARCHTYPES:
+            return libtype
+        raise NotFound(f'Unknown libtype: {libtype}') from None
 
 
 def tagType(tag):
@@ -254,11 +270,12 @@ def tagType(tag):
             :exc:`~plexapi.exceptions.NotFound`: Unknown tag
     """
     tag = str(tag)
-    if tag in [str(v) for v in TAGTYPES.values()]:
-        return tag
-    if TAGTYPES.get(tag) is not None:
+    try:
         return TAGTYPES[tag]
-    raise NotFound(f'Unknown tag: {tag}')
+    except KeyError:
+        if tag in [str(k) for k in REVERSETAGTYPES]:
+            return tag
+        raise NotFound(f'Unknown tag: {tag}') from None
 
 
 def reverseTagType(tag):
@@ -270,13 +287,12 @@ def reverseTagType(tag):
         Raises:
             :exc:`~plexapi.exceptions.NotFound`: Unknown tag
     """
-    if tag in TAGTYPES:
-        return tag
-    tag = int(tag)
-    for k, v in TAGTYPES.items():
-        if tag == v:
-            return k
-    raise NotFound(f'Unknown tag: {tag}')
+    try:
+        return REVERSETAGTYPES[int(tag)]
+    except (KeyError, ValueError):
+        if tag in TAGTYPES:
+            return tag
+        raise NotFound(f'Unknown tag: {tag}') from None
 
 
 def threaded(callback, listargs):
@@ -310,33 +326,44 @@ def toDatetime(value, format=None):
             value (str): value to return as a datetime
             format (str): Format to pass strftime (optional; if value is a str).
     """
-    if value and value is not None:
+    if value is not None:
         if format:
             try:
-                value = datetime.strptime(value, format)
+                return datetime.strptime(value, format)
             except ValueError:
-                log.info('Failed to parse %s to datetime, defaulting to None', value)
+                log.info('Failed to parse "%s" to datetime as format "%s", defaulting to None', value, format)
                 return None
         else:
-            # https://bugs.python.org/issue30684
-            # And platform support for before epoch seems to be flaky.
-            # Also limit to max 32-bit integer
-            value = min(max(int(value), 86400), 2**31 - 1)
-            value = datetime.fromtimestamp(int(value))
+            try:
+                value = int(value)
+            except ValueError:
+                log.info('Failed to parse "%s" to datetime as timestamp, defaulting to None', value)
+                return None
+            try:
+                return datetime.fromtimestamp(value)
+            except (OSError, OverflowError, ValueError):
+                try:
+                    return datetime.fromtimestamp(0) + timedelta(seconds=value)
+                except OverflowError:
+                    log.info('Failed to parse "%s" to datetime as timestamp (out-of-bounds), defaulting to None', value)
+                    return None
     return value
 
 
 def millisecondToHumanstr(milliseconds):
-    """ Returns human readable time duration from milliseconds.
-        HH:MM:SS:MMMM
+    """ Returns human readable time duration [D day[s], ]HH:MM:SS.UUU from milliseconds.
 
         Parameters:
-            milliseconds (str,int): time duration in milliseconds.
+            milliseconds (str, int): time duration in milliseconds.
     """
     milliseconds = int(milliseconds)
-    r = datetime.utcfromtimestamp(milliseconds / 1000)
-    f = r.strftime("%H:%M:%S.%f")
-    return f[:-2]
+    if milliseconds < 0:
+        return '-' + millisecondToHumanstr(abs(milliseconds))
+    secs, ms = divmod(milliseconds, 1000)
+    mins, secs = divmod(secs, 60)
+    hours, mins = divmod(mins, 60)
+    days, hours = divmod(hours, 24)
+    return ('' if days == 0 else f'{days} day{"s" if days > 1 else ""}, ') + f'{hours:02d}:{mins:02d}:{secs:02d}.{ms:03d}'
 
 
 def toList(value, itemcast=None, delim=','):
@@ -387,12 +414,12 @@ def downloadSessionImages(server, filename=None, height=150, width=150,
                 prettyname = media._prettyfilename()
                 filename = f'session_transcode_{media.usernames[0]}_{prettyname}_{int(time.time())}'
             url = server.transcodeImage(url, height, width, opacity, saturation)
-            filepath = download(url, filename=filename)
+            filepath = download(url, server._token, filename=filename)
             info['username'] = {'filepath': filepath, 'url': url}
     return info
 
 
-def download(url, token, filename=None, savepath=None, session=None, chunksize=4024,
+def download(url, token, filename=None, savepath=None, session=None, chunksize=4096,   # noqa: C901
              unpack=False, mocked=False, showstatus=False):
     """ Helper to download a thumb, videofile or other media item. Returns the local
         path to the downloaded file.
@@ -415,6 +442,17 @@ def download(url, token, filename=None, savepath=None, session=None, chunksize=4
     session = session or requests.Session()
     headers = {'X-Plex-Token': token}
     response = session.get(url, headers=headers, stream=True)
+    if response.status_code not in (200, 201, 204):
+        codename = codes.get(response.status_code)[0]
+        errtext = response.text.replace('\n', ' ')
+        message = f'({response.status_code}) {codename}; {response.url} {errtext}'
+        if response.status_code == 401:
+            raise Unauthorized(message)
+        elif response.status_code == 404:
+            raise NotFound(message)
+        else:
+            raise BadRequest(message)
+
     # make sure the savepath directory exists
     savepath = savepath or os.getcwd()
     os.makedirs(savepath, exist_ok=True)
@@ -630,3 +668,8 @@ def openOrRead(file):
         return file.read()
     with open(file, 'rb') as f:
         return f.read()
+
+
+def sha1hash(guid):
+    """ Return the SHA1 hash of a guid. """
+    return sha1(guid.encode('utf-8')).hexdigest()

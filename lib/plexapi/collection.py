@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from plexapi import media, utils
@@ -8,8 +9,7 @@ from plexapi.library import LibrarySection, ManagedHub
 from plexapi.mixins import (
     AdvancedSettingsMixin, SmartFilterMixin, HubsMixin, RatingMixin,
     ArtMixin, PosterMixin, ThemeMixin,
-    ContentRatingMixin, SortTitleMixin, SummaryMixin, TitleMixin,
-    LabelMixin
+    CollectionEditMixins
 )
 from plexapi.utils import deprecated
 
@@ -19,8 +19,7 @@ class Collection(
     PlexPartialObject,
     AdvancedSettingsMixin, SmartFilterMixin, HubsMixin, RatingMixin,
     ArtMixin, PosterMixin, ThemeMixin,
-    ContentRatingMixin, SortTitleMixin, SummaryMixin, TitleMixin,
-    LabelMixin
+    CollectionEditMixins
 ):
     """ Represents a single Collection.
 
@@ -30,6 +29,7 @@ class Collection(
             addedAt (datetime): Datetime the collection was added to the library.
             art (str): URL to artwork image (/library/metadata/<ratingKey>/art/<artid>).
             artBlurHash (str): BlurHash string for artwork image.
+            audienceRating (float): Audience rating.
             childCount (int): Number of items in the collection.
             collectionFilterBasedOnUser (int): Which user's activity is used for the collection filtering.
             collectionMode (int): How the items in the collection are displayed.
@@ -48,6 +48,7 @@ class Collection(
             librarySectionTitle (str): :class:`~plexapi.library.LibrarySection` title.
             maxYear (int): Maximum year for the items in the collection.
             minYear (int): Minimum year for the items in the collection.
+            rating (float): Collection rating (7.9; 9.8; 8.1).
             ratingCount (int): The number of ratings.
             ratingKey (int): Unique key identifying the collection.
             smart (bool): True if the collection is a smart collection.
@@ -70,6 +71,7 @@ class Collection(
         self.addedAt = utils.toDatetime(data.attrib.get('addedAt'))
         self.art = data.attrib.get('art')
         self.artBlurHash = data.attrib.get('artBlurHash')
+        self.audienceRating = utils.cast(float, data.attrib.get('audienceRating'))
         self.childCount = utils.cast(int, data.attrib.get('childCount'))
         self.collectionFilterBasedOnUser = utils.cast(int, data.attrib.get('collectionFilterBasedOnUser', '0'))
         self.collectionMode = utils.cast(int, data.attrib.get('collectionMode', '-1'))
@@ -88,6 +90,7 @@ class Collection(
         self.librarySectionTitle = data.attrib.get('librarySectionTitle')
         self.maxYear = utils.cast(int, data.attrib.get('maxYear'))
         self.minYear = utils.cast(int, data.attrib.get('minYear'))
+        self.rating = utils.cast(float, data.attrib.get('rating'))
         self.ratingCount = utils.cast(int, data.attrib.get('ratingCount'))
         self.ratingKey = utils.cast(int, data.attrib.get('ratingKey'))
         self.smart = utils.cast(bool, data.attrib.get('smart', '0'))
@@ -222,6 +225,7 @@ class Collection(
                 .. code-block:: python
 
                     collection.updateMode(user="user")
+
         """
         if not self.smart:
             raise BadRequest('Cannot change collection filtering user for a non-smart collection.')
@@ -250,6 +254,7 @@ class Collection(
                 .. code-block:: python
 
                     collection.updateMode(mode="hide")
+
         """
         mode_dict = {
             'default': -1,
@@ -275,7 +280,8 @@ class Collection(
 
                 .. code-block:: python
 
-                    collection.updateSort(mode="alpha")
+                    collection.sortUpdate(sort="alpha")
+
         """
         if self.smart:
             raise BadRequest('Cannot change collection order for a smart collection.')
@@ -398,7 +404,7 @@ class Collection(
     @deprecated('use editTitle, editSortTitle, editContentRating, and editSummary instead')
     def edit(self, title=None, titleSort=None, contentRating=None, summary=None, **kwargs):
         """ Edit the collection.
-        
+
             Parameters:
                 title (str, optional): The title of the collection.
                 titleSort (str, optional): The sort title of the collection.
@@ -501,6 +507,8 @@ class Collection(
                 :class:`~plexapi.collection.Collection`: A new instance of the created Collection.
         """
         if smart:
+            if items:
+                raise BadRequest('Cannot create a smart collection with items.')
             return cls._createSmart(server, title, section, limit, libtype, sort, filters, **kwargs)
         else:
             return cls._create(server, title, section, items)
@@ -559,3 +567,9 @@ class Collection(
             raise Unsupported('Unsupported collection content')
 
         return myplex.sync(sync_item, client=client, clientId=clientId)
+
+    @property
+    def metadataDirectory(self):
+        """ Returns the Plex Media Server data directory where the metadata is stored. """
+        guid_hash = utils.sha1hash(self.guid)
+        return str(Path('Metadata') / 'Collections' / guid_hash[0] / f'{guid_hash[1:]}.bundle')
