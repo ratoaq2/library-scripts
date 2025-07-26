@@ -14,8 +14,8 @@ class AdvancedSettingsMixin:
 
     def preferences(self):
         """ Returns a list of :class:`~plexapi.settings.Preferences` objects. """
-        data = self._server.query(self._details_key)
-        return self.findItems(data, settings.Preferences, rtag='Preferences')
+        key = f'{self.key}?includePreferences=1'
+        return self.fetchItems(key, cls=settings.Preferences, rtag='Preferences')
 
     def preference(self, pref):
         """ Returns a :class:`~plexapi.settings.Preferences` object for the specified pref.
@@ -240,8 +240,7 @@ class UnmatchMatchMixin:
                     params['agent'] = utils.getAgentIdentifier(self.section(), agent)
 
         key = key + '?' + urlencode(params)
-        data = self._server.query(key, method=self._server._session.get)
-        return self.findItems(data, initpath=key)
+        return self.fetchItems(key, cls=media.SearchResult)
 
     def fixMatch(self, searchResult=None, auto=False, agent=None):
         """ Use match result to update show metadata.
@@ -278,8 +277,8 @@ class ExtrasMixin:
     def extras(self):
         """ Returns a list of :class:`~plexapi.video.Extra` objects. """
         from plexapi.video import Extra
-        data = self._server.query(self._details_key)
-        return self.findItems(data, Extra, rtag='Extras')
+        key = f'{self.key}/extras'
+        return self.fetchItems(key, cls=Extra)
 
 
 class HubsMixin:
@@ -289,8 +288,7 @@ class HubsMixin:
         """ Returns a list of :class:`~plexapi.library.Hub` objects. """
         from plexapi.library import Hub
         key = f'{self.key}/related'
-        data = self._server.query(key)
-        return self.findItems(data, Hub)
+        return self.fetchItems(key, cls=Hub)
 
 
 class PlayedUnplayedMixin:
@@ -405,6 +403,63 @@ class ArtMixin(ArtUrlMixin, ArtLockMixin):
         return self
 
 
+class LogoUrlMixin:
+    """ Mixin for Plex objects that can have a logo url. """
+
+    @property
+    def logoUrl(self):
+        """ Return the logo url for the Plex object. """
+        image = next((i for i in self.images if i.type == 'clearLogo'), None)
+        return self._server.url(image.url, includeToken=True) if image else None
+
+
+class LogoLockMixin:
+    """ Mixin for Plex objects that can have a locked logo. """
+
+    def lockLogo(self):
+        """ Lock the logo for a Plex object. """
+        raise NotImplementedError('Logo cannot be locked through the API.')
+
+    def unlockLogo(self):
+        """ Unlock the logo for a Plex object. """
+        raise NotImplementedError('Logo cannot be unlocked through the API.')
+
+
+class LogoMixin(LogoUrlMixin, LogoLockMixin):
+    """ Mixin for Plex objects that can have logos. """
+
+    def logos(self):
+        """ Returns list of available :class:`~plexapi.media.Logo` objects. """
+        return self.fetchItems(f'/library/metadata/{self.ratingKey}/clearLogos', cls=media.Logo)
+
+    def uploadLogo(self, url=None, filepath=None):
+        """ Upload a logo from a url or filepath.
+
+            Parameters:
+                url (str): The full URL to the image to upload.
+                filepath (str): The full file path the the image to upload or file-like object.
+        """
+        if url:
+            key = f'/library/metadata/{self.ratingKey}/clearLogos?url={quote_plus(url)}'
+            self._server.query(key, method=self._server._session.post)
+        elif filepath:
+            key = f'/library/metadata/{self.ratingKey}/clearLogos'
+            data = openOrRead(filepath)
+            self._server.query(key, method=self._server._session.post, data=data)
+        return self
+
+    def setLogo(self, logo):
+        """ Set the logo for a Plex object.
+
+            Raises:
+                :exc:`~plexapi.exceptions.NotImplementedError`: Logo cannot be set through the API.
+        """
+        raise NotImplementedError(
+            'Logo cannot be set through the API. '
+            'Re-upload the logo using "uploadLogo" to set it.'
+        )
+
+
 class PosterUrlMixin:
     """ Mixin for Plex objects that can have a poster url. """
 
@@ -515,6 +570,11 @@ class ThemeMixin(ThemeUrlMixin, ThemeLockMixin):
         return self
 
     def setTheme(self, theme):
+        """ Set the theme for a Plex object.
+
+            Raises:
+                :exc:`~plexapi.exceptions.NotImplementedError`: Themes cannot be set through the API.
+        """
         raise NotImplementedError(
             'Themes cannot be set through the API. '
             'Re-upload the theme using "uploadTheme" to set it.'

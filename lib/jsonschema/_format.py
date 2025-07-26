@@ -13,9 +13,7 @@ from jsonschema.exceptions import FormatError
 _FormatCheckCallable = typing.Callable[[object], bool]
 #: A format checker callable.
 _F = typing.TypeVar("_F", bound=_FormatCheckCallable)
-_RaisesType = typing.Union[
-    typing.Type[Exception], typing.Tuple[typing.Type[Exception], ...],
-]
+_RaisesType = typing.Union[type[Exception], tuple[type[Exception], ...]]
 
 _RE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$", re.ASCII)
 
@@ -274,6 +272,10 @@ with suppress(ImportError):
         draft7="hostname",
         draft201909="hostname",
         draft202012="hostname",
+        # fqdn.FQDN("") raises a ValueError due to a bug
+        # however, it's not clear when or if that will be fixed, so catch it
+        # here for now
+        raises=ValueError,
     )
     def is_host_name(instance: object) -> bool:
         if not isinstance(instance, str):
@@ -321,6 +323,31 @@ except ImportError:
             if not isinstance(instance, str):
                 return True
             return validate_rfc3986(instance, rule="URI_reference")
+
+    with suppress(ImportError):
+        from rfc3987_syntax import is_valid_syntax as _rfc3987_is_valid_syntax
+
+        @_checks_drafts(
+            draft7="iri",
+            draft201909="iri",
+            draft202012="iri",
+            raises=ValueError,
+        )
+        def is_iri(instance: object) -> bool:
+            if not isinstance(instance, str):
+                return True
+            return _rfc3987_is_valid_syntax("iri", instance)
+
+        @_checks_drafts(
+            draft7="iri-reference",
+            draft201909="iri-reference",
+            draft202012="iri-reference",
+            raises=ValueError,
+        )
+        def is_iri_reference(instance: object) -> bool:
+            if not isinstance(instance, str):
+                return True
+            return _rfc3987_is_valid_syntax("iri_reference", instance)
 
 else:
 
@@ -413,20 +440,16 @@ def is_draft3_time(instance: object) -> bool:
 
 
 with suppress(ImportError):
-    from webcolors import CSS21_NAMES_TO_HEX
     import webcolors
-
-    def is_css_color_code(instance: object) -> bool:
-        return webcolors.normalize_hex(instance)
 
     @_checks_drafts(draft3="color", raises=(ValueError, TypeError))
     def is_css21_color(instance: object) -> bool:
-        if (
-            not isinstance(instance, str)
-            or instance.lower() in CSS21_NAMES_TO_HEX
-        ):
-            return True
-        return is_css_color_code(instance)
+        if isinstance(instance, str):
+            try:
+                webcolors.name_to_hex(instance)
+            except ValueError:
+                webcolors.normalize_hex(instance.lower())
+        return True
 
 
 with suppress(ImportError):

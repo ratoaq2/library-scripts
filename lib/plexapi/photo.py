@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from plexapi import media, utils, video
-from plexapi.base import Playable, PlexPartialObject, PlexSession
+from plexapi.base import Playable, PlexPartialObject, PlexSession, cached_data_property
 from plexapi.exceptions import BadRequest
 from plexapi.mixins import (
     RatingMixin,
@@ -30,6 +30,7 @@ class Photoalbum(
             composite (str): URL to composite image (/library/metadata/<ratingKey>/composite/<compositeid>)
             fields (List<:class:`~plexapi.media.Field`>): List of field objects.
             guid (str): Plex GUID for the photo album (local://229674).
+            images (List<:class:`~plexapi.media.Image`>): List of image objects.
             index (sting): Plex index number for the photo album.
             key (str): API URL (/library/metadata/<ratingkey>).
             lastRatedAt (datetime): Datetime the photo album was last rated.
@@ -55,7 +56,6 @@ class Photoalbum(
         self.addedAt = utils.toDatetime(data.attrib.get('addedAt'))
         self.art = data.attrib.get('art')
         self.composite = data.attrib.get('composite')
-        self.fields = self.findItems(data, media.Field)
         self.guid = data.attrib.get('guid')
         self.index = utils.cast(int, data.attrib.get('index'))
         self.key = data.attrib.get('key', '').replace('/children', '')  # FIX_BUG_50
@@ -72,6 +72,14 @@ class Photoalbum(
         self.type = data.attrib.get('type')
         self.updatedAt = utils.toDatetime(data.attrib.get('updatedAt'))
         self.userRating = utils.cast(float, data.attrib.get('userRating'))
+
+    @cached_data_property
+    def fields(self):
+        return self.findItems(self._data, media.Field)
+
+    @cached_data_property
+    def images(self):
+        return self.findItems(self._data, media.Image)
 
     def album(self, title):
         """ Returns the :class:`~plexapi.photo.Photoalbum` that matches the specified title.
@@ -164,6 +172,7 @@ class Photo(
             createdAtTZOffset (int): Unknown (-25200).
             fields (List<:class:`~plexapi.media.Field`>): List of field objects.
             guid (str): Plex GUID for the photo (com.plexapp.agents.none://231714?lang=xn).
+            images (List<:class:`~plexapi.media.Image`>): List of image objects.
             index (sting): Plex index number for the photo.
             key (str): API URL (/library/metadata/<ratingkey>).
             lastRatedAt (datetime): Datetime the photo was last rated.
@@ -202,7 +211,6 @@ class Photo(
         self.addedAt = utils.toDatetime(data.attrib.get('addedAt'))
         self.createdAtAccuracy = data.attrib.get('createdAtAccuracy')
         self.createdAtTZOffset = utils.cast(int, data.attrib.get('createdAtTZOffset'))
-        self.fields = self.findItems(data, media.Field)
         self.guid = data.attrib.get('guid')
         self.index = utils.cast(int, data.attrib.get('index'))
         self.key = data.attrib.get('key', '')
@@ -211,7 +219,6 @@ class Photo(
         self.librarySectionKey = data.attrib.get('librarySectionKey')
         self.librarySectionTitle = data.attrib.get('librarySectionTitle')
         self.listType = 'photo'
-        self.media = self.findItems(data, media.Media)
         self.originallyAvailableAt = utils.toDatetime(data.attrib.get('originallyAvailableAt'), '%Y-%m-%d')
         self.parentGuid = data.attrib.get('parentGuid')
         self.parentIndex = utils.cast(int, data.attrib.get('parentIndex'))
@@ -222,7 +229,6 @@ class Photo(
         self.ratingKey = utils.cast(int, data.attrib.get('ratingKey'))
         self.sourceURI = data.attrib.get('source')  # remote playlist item
         self.summary = data.attrib.get('summary')
-        self.tags = self.findItems(data, media.Tag)
         self.thumb = data.attrib.get('thumb')
         self.title = data.attrib.get('title')
         self.titleSort = data.attrib.get('titleSort', self.title)
@@ -230,6 +236,22 @@ class Photo(
         self.updatedAt = utils.toDatetime(data.attrib.get('updatedAt'))
         self.userRating = utils.cast(float, data.attrib.get('userRating'))
         self.year = utils.cast(int, data.attrib.get('year'))
+
+    @cached_data_property
+    def fields(self):
+        return self.findItems(self._data, media.Field)
+
+    @cached_data_property
+    def images(self):
+        return self.findItems(self._data, media.Image)
+
+    @cached_data_property
+    def media(self):
+        return self.findItems(self._data, media.Media)
+
+    @cached_data_property
+    def tags(self):
+        return self.findItems(self._data, media.Tag)
 
     def _prettyfilename(self):
         """ Returns a filename for use in download. """

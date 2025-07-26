@@ -1,6 +1,8 @@
 from unittest import TestCase
 import textwrap
 
+import jsonpath_ng
+
 from jsonschema import exceptions
 from jsonschema.validators import _LATEST_VERSION
 
@@ -648,6 +650,29 @@ class TestErrorInitReprStr(TestCase):
             validator="maxLength",
         )
 
+    def test_does_not_reorder_dicts(self):
+        self.assertShows(
+            """
+            Failed validating 'type' in schema:
+                {'do': 3, 'not': 7, 'sort': 37, 'me': 73}
+
+            On instance:
+                {'here': 73, 'too': 37, 'no': 7, 'sorting': 3}
+            """,
+            schema={
+                "do": 3,
+                "not": 7,
+                "sort": 37,
+                "me": 73,
+            },
+            instance={
+                "here": 73,
+                "too": 37,
+                "no": 7,
+                "sorting": 3,
+            },
+        )
+
     def test_str_works_with_instances_having_overriden_eq_operator(self):
         """
         Check for #164 which rendered exceptions unusable when a
@@ -677,3 +702,58 @@ class TestHashable(TestCase):
     def test_hashable(self):
         {exceptions.ValidationError("")}
         {exceptions.SchemaError("")}
+
+
+class TestJsonPathRendering(TestCase):
+    def validate_json_path_rendering(self, property_name, expected_path):
+        error = exceptions.ValidationError(
+            path=[property_name],
+            message="1",
+            validator="foo",
+            instance="i1",
+        )
+
+        rendered_json_path = error.json_path
+        self.assertEqual(rendered_json_path, expected_path)
+
+        re_parsed_name = jsonpath_ng.parse(rendered_json_path).right.fields[0]
+        self.assertEqual(re_parsed_name, property_name)
+
+    def test_basic(self):
+        self.validate_json_path_rendering("x", "$.x")
+
+    def test_empty(self):
+        self.validate_json_path_rendering("", "$['']")
+
+    def test_number(self):
+        self.validate_json_path_rendering("1", "$['1']")
+
+    def test_period(self):
+        self.validate_json_path_rendering(".", "$['.']")
+
+    def test_single_quote(self):
+        self.validate_json_path_rendering("'", r"$['\'']")
+
+    def test_space(self):
+        self.validate_json_path_rendering(" ", "$[' ']")
+
+    def test_backslash(self):
+        self.validate_json_path_rendering("\\", r"$['\\']")
+
+    def test_backslash_single_quote(self):
+        self.validate_json_path_rendering(r"\'", r"$['\\\'']")
+
+    def test_underscore(self):
+        self.validate_json_path_rendering("_", r"$['_']")
+
+    def test_double_quote(self):
+        self.validate_json_path_rendering('"', """$['"']""")
+
+    def test_hyphen(self):
+        self.validate_json_path_rendering("-", "$['-']")
+
+    def test_json_path_injection(self):
+        self.validate_json_path_rendering("a[0]", "$['a[0]']")
+
+    def test_open_bracket(self):
+        self.validate_json_path_rendering("[", "$['[']")

@@ -8,7 +8,7 @@ from urllib.parse import quote_plus
 from typing import Any, Dict, List, Optional, TypeVar
 
 from plexapi import media, utils
-from plexapi.base import Playable, PlexPartialObject, PlexHistory, PlexSession
+from plexapi.base import Playable, PlexPartialObject, PlexHistory, PlexSession, cached_data_property
 from plexapi.exceptions import BadRequest
 from plexapi.mixins import (
     AdvancedSettingsMixin, SplitMergeMixin, UnmatchMatchMixin, ExtrasMixin, HubsMixin, PlayedUnplayedMixin, RatingMixin,
@@ -33,6 +33,7 @@ class Audio(PlexPartialObject, PlayedUnplayedMixin):
             distance (float): Sonic Distance of the item from the seed item.
             fields (List<:class:`~plexapi.media.Field`>): List of field objects.
             guid (str): Plex GUID for the artist, album, or track (plex://artist/5d07bcb0403c64029053ac4c).
+            images (List<:class:`~plexapi.media.Image`>): List of image objects.
             index (int): Plex index number (often the track number).
             key (str): API URL (/library/metadata/<ratingkey>).
             lastRatedAt (datetime): Datetime the item was last rated.
@@ -58,12 +59,10 @@ class Audio(PlexPartialObject, PlayedUnplayedMixin):
 
     def _loadData(self, data):
         """ Load attribute values from Plex XML response. """
-        self._data = data
         self.addedAt = utils.toDatetime(data.attrib.get('addedAt'))
         self.art = data.attrib.get('art')
         self.artBlurHash = data.attrib.get('artBlurHash')
         self.distance = utils.cast(float, data.attrib.get('distance'))
-        self.fields = self.findItems(data, media.Field)
         self.guid = data.attrib.get('guid')
         self.index = utils.cast(int, data.attrib.get('index'))
         self.key = data.attrib.get('key', '')
@@ -73,7 +72,6 @@ class Audio(PlexPartialObject, PlayedUnplayedMixin):
         self.librarySectionKey = data.attrib.get('librarySectionKey')
         self.librarySectionTitle = data.attrib.get('librarySectionTitle')
         self.listType = 'audio'
-        self.moods = self.findItems(data, media.Mood)
         self.musicAnalysisVersion = utils.cast(int, data.attrib.get('musicAnalysisVersion'))
         self.ratingKey = utils.cast(int, data.attrib.get('ratingKey'))
         self.summary = data.attrib.get('summary')
@@ -85,6 +83,18 @@ class Audio(PlexPartialObject, PlayedUnplayedMixin):
         self.updatedAt = utils.toDatetime(data.attrib.get('updatedAt'))
         self.userRating = utils.cast(float, data.attrib.get('userRating'))
         self.viewCount = utils.cast(int, data.attrib.get('viewCount', 0))
+
+    @cached_data_property
+    def fields(self):
+        return self.findItems(self._data, media.Field)
+
+    @cached_data_property
+    def images(self):
+        return self.findItems(self._data, media.Image)
+
+    @cached_data_property
+    def moods(self):
+        return self.findItems(self._data, media.Mood)
 
     def url(self, part):
         """ Returns the full URL for the audio item. Typically used for getting a specific track. """
@@ -193,6 +203,7 @@ class Artist(
             similar (List<:class:`~plexapi.media.Similar`>): List of similar objects.
             styles (List<:class:`~plexapi.media.Style`>): List of style objects.
             theme (str): URL to theme resource (/library/metadata/<ratingkey>/theme/<themeid>).
+            ultraBlurColors (:class:`~plexapi.media.UltraBlurColors`): Ultra blur color object.
     """
     TAG = 'Directory'
     TYPE = 'artist'
@@ -202,17 +213,45 @@ class Artist(
         Audio._loadData(self, data)
         self.albumSort = utils.cast(int, data.attrib.get('albumSort', '-1'))
         self.audienceRating = utils.cast(float, data.attrib.get('audienceRating'))
-        self.collections = self.findItems(data, media.Collection)
-        self.countries = self.findItems(data, media.Country)
-        self.genres = self.findItems(data, media.Genre)
-        self.guids = self.findItems(data, media.Guid)
         self.key = self.key.replace('/children', '')  # FIX_BUG_50
-        self.labels = self.findItems(data, media.Label)
-        self.locations = self.listAttrs(data, 'path', etag='Location')
         self.rating = utils.cast(float, data.attrib.get('rating'))
-        self.similar = self.findItems(data, media.Similar)
-        self.styles = self.findItems(data, media.Style)
         self.theme = data.attrib.get('theme')
+
+    @cached_data_property
+    def collections(self):
+        return self.findItems(self._data, media.Collection)
+
+    @cached_data_property
+    def countries(self):
+        return self.findItems(self._data, media.Country)
+
+    @cached_data_property
+    def genres(self):
+        return self.findItems(self._data, media.Genre)
+
+    @cached_data_property
+    def guids(self):
+        return self.findItems(self._data, media.Guid)
+
+    @cached_data_property
+    def labels(self):
+        return self.findItems(self._data, media.Label)
+
+    @cached_data_property
+    def locations(self):
+        return self.listAttrs(self._data, 'path', etag='Location')
+
+    @cached_data_property
+    def similar(self):
+        return self.findItems(self._data, media.Similar)
+
+    @cached_data_property
+    def styles(self):
+        return self.findItems(self._data, media.Style)
+
+    @cached_data_property
+    def ultraBlurColors(self):
+        return self.findItem(self._data, media.UltraBlurColors)
 
     def __iter__(self):
         for album in self.albums():
@@ -281,6 +320,21 @@ class Artist(
             filepaths += track.download(_savepath, keep_original_name, **kwargs)
         return filepaths
 
+    def popularTracks(self):
+        """ Returns a list of :class:`~plexapi.audio.Track` popular tracks by the artist. """
+        filters = {
+            'album.subformat!': 'Compilation,Live',
+            'artist.id': self.ratingKey,
+            'group': 'title',
+            'ratingCount>>': 0,
+        }
+        return self.section().search(
+            libtype='track',
+            filters=filters,
+            sort='ratingCount:desc',
+            limit=100
+        )
+
     def station(self):
         """ Returns a :class:`~plexapi.playlist.Playlist` artist radio station or `None`. """
         key = f'{self.key}?includeStations=1'
@@ -325,6 +379,7 @@ class Album(
             studio (str): Studio that released the album.
             styles (List<:class:`~plexapi.media.Style`>): List of style objects.
             subformats (List<:class:`~plexapi.media.Subformat`>): List of subformat objects.
+            ultraBlurColors (:class:`~plexapi.media.UltraBlurColors`): Ultra blur color object.
             viewedLeafCount (int): Number of items marked as played in the album view.
             year (int): Year the album was released.
     """
@@ -335,12 +390,7 @@ class Album(
         """ Load attribute values from Plex XML response. """
         Audio._loadData(self, data)
         self.audienceRating = utils.cast(float, data.attrib.get('audienceRating'))
-        self.collections = self.findItems(data, media.Collection)
-        self.formats = self.findItems(data, media.Format)
-        self.genres = self.findItems(data, media.Genre)
-        self.guids = self.findItems(data, media.Guid)
         self.key = self.key.replace('/children', '')  # FIX_BUG_50
-        self.labels = self.findItems(data, media.Label)
         self.leafCount = utils.cast(int, data.attrib.get('leafCount'))
         self.loudnessAnalysisVersion = utils.cast(int, data.attrib.get('loudnessAnalysisVersion'))
         self.originallyAvailableAt = utils.toDatetime(data.attrib.get('originallyAvailableAt'), '%Y-%m-%d')
@@ -352,10 +402,40 @@ class Album(
         self.parentTitle = data.attrib.get('parentTitle')
         self.rating = utils.cast(float, data.attrib.get('rating'))
         self.studio = data.attrib.get('studio')
-        self.styles = self.findItems(data, media.Style)
-        self.subformats = self.findItems(data, media.Subformat)
         self.viewedLeafCount = utils.cast(int, data.attrib.get('viewedLeafCount'))
         self.year = utils.cast(int, data.attrib.get('year'))
+
+    @cached_data_property
+    def collections(self):
+        return self.findItems(self._data, media.Collection)
+
+    @cached_data_property
+    def formats(self):
+        return self.findItems(self._data, media.Format)
+
+    @cached_data_property
+    def genres(self):
+        return self.findItems(self._data, media.Genre)
+
+    @cached_data_property
+    def guids(self):
+        return self.findItems(self._data, media.Guid)
+
+    @cached_data_property
+    def labels(self):
+        return self.findItems(self._data, media.Label)
+
+    @cached_data_property
+    def styles(self):
+        return self.findItems(self._data, media.Style)
+
+    @cached_data_property
+    def subformats(self):
+        return self.findItems(self._data, media.Subformat)
+
+    @cached_data_property
+    def ultraBlurColors(self):
+        return self.findItem(self._data, media.UltraBlurColors)
 
     def __iter__(self):
         for track in self.tracks():
@@ -474,11 +554,8 @@ class Track(
         Audio._loadData(self, data)
         Playable._loadData(self, data)
         self.audienceRating = utils.cast(float, data.attrib.get('audienceRating'))
-        self.chapters = self.findItems(data, media.Chapter)
         self.chapterSource = data.attrib.get('chapterSource')
-        self.collections = self.findItems(data, media.Collection)
         self.duration = utils.cast(int, data.attrib.get('duration'))
-        self.genres = self.findItems(data, media.Genre)
         self.grandparentArt = data.attrib.get('grandparentArt')
         self.grandparentGuid = data.attrib.get('grandparentGuid')
         self.grandparentKey = data.attrib.get('grandparentKey')
@@ -486,9 +563,6 @@ class Track(
         self.grandparentTheme = data.attrib.get('grandparentTheme')
         self.grandparentThumb = data.attrib.get('grandparentThumb')
         self.grandparentTitle = data.attrib.get('grandparentTitle')
-        self.guids = self.findItems(data, media.Guid)
-        self.labels = self.findItems(data, media.Label)
-        self.media = self.findItems(data, media.Media)
         self.originalTitle = data.attrib.get('originalTitle')
         self.parentGuid = data.attrib.get('parentGuid')
         self.parentIndex = utils.cast(int, data.attrib.get('parentIndex'))
@@ -503,6 +577,30 @@ class Track(
         self.sourceURI = data.attrib.get('source')  # remote playlist item
         self.viewOffset = utils.cast(int, data.attrib.get('viewOffset', 0))
         self.year = utils.cast(int, data.attrib.get('year'))
+
+    @cached_data_property
+    def chapters(self):
+        return self.findItems(self._data, media.Chapter)
+
+    @cached_data_property
+    def collections(self):
+        return self.findItems(self._data, media.Collection)
+
+    @cached_data_property
+    def genres(self):
+        return self.findItems(self._data, media.Genre)
+
+    @cached_data_property
+    def guids(self):
+        return self.findItems(self._data, media.Guid)
+
+    @cached_data_property
+    def labels(self):
+        return self.findItems(self._data, media.Label)
+
+    @cached_data_property
+    def media(self):
+        return self.findItems(self._data, media.Media)
 
     @property
     def locations(self):

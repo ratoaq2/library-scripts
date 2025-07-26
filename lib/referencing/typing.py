@@ -4,15 +4,13 @@ Type-annotation related support for the referencing library.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, TypeVar
+from collections.abc import Mapping as Mapping
+from typing import TYPE_CHECKING, Any, Protocol
 
 try:
-    from collections.abc import Mapping as Mapping
-
-    Mapping[str, str]
-except TypeError:  # pragma: no cover
-    from typing import Mapping as Mapping
-
+    from typing_extensions import TypeVar
+except ImportError:  # pragma: no cover
+    from typing import TypeVar
 
 if TYPE_CHECKING:
     from referencing._core import Resolved, Resolver, Resource
@@ -21,7 +19,7 @@ if TYPE_CHECKING:
 URI = str
 
 #: The type of documents within a registry.
-D = TypeVar("D")
+D = TypeVar("D", default=Any)
 
 
 class Retrieve(Protocol[D]):

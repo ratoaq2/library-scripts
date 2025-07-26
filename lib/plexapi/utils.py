@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import string
+import sys
 import time
 import unicodedata
 import warnings
@@ -16,12 +17,12 @@ from getpass import getpass
 from hashlib import sha1
 from threading import Event, Thread
 from urllib.parse import quote
+from xml.etree import ElementTree
 
 import requests
 from requests.status_codes import _codes as codes
 
 from plexapi.exceptions import BadRequest, NotFound, Unauthorized
-
 try:
     from tqdm import tqdm
 except ImportError:
@@ -89,6 +90,8 @@ TAGTYPES = {
     'theme': 317,
     'studio': 318,
     'network': 319,
+    'showOrdering': 322,
+    'clearLogo': 323,
     'place': 400,
 }
 REVERSETAGTYPES = {v: k for k, v in TAGTYPES.items()}
@@ -673,3 +676,56 @@ def openOrRead(file):
 def sha1hash(guid):
     """ Return the SHA1 hash of a guid. """
     return sha1(guid.encode('utf-8')).hexdigest()
+
+
+# https://stackoverflow.com/a/64570125
+_illegal_XML_characters = [
+    (0x00, 0x08),
+    (0x0B, 0x0C),
+    (0x0E, 0x1F),
+    (0x7F, 0x84),
+    (0x86, 0x9F),
+    (0xFDD0, 0xFDDF),
+    (0xFFFE, 0xFFFF),
+]
+if sys.maxunicode >= 0x10000:  # not narrow build
+    _illegal_XML_characters.extend(
+        [
+            (0x1FFFE, 0x1FFFF),
+            (0x2FFFE, 0x2FFFF),
+            (0x3FFFE, 0x3FFFF),
+            (0x4FFFE, 0x4FFFF),
+            (0x5FFFE, 0x5FFFF),
+            (0x6FFFE, 0x6FFFF),
+            (0x7FFFE, 0x7FFFF),
+            (0x8FFFE, 0x8FFFF),
+            (0x9FFFE, 0x9FFFF),
+            (0xAFFFE, 0xAFFFF),
+            (0xBFFFE, 0xBFFFF),
+            (0xCFFFE, 0xCFFFF),
+            (0xDFFFE, 0xDFFFF),
+            (0xEFFFE, 0xEFFFF),
+            (0xFFFFE, 0xFFFFF),
+            (0x10FFFE, 0x10FFFF),
+        ]
+    )
+_illegal_XML_ranges = [
+    fr'{chr(low)}-{chr(high)}'
+    for (low, high) in _illegal_XML_characters
+]
+_illegal_XML_re = re.compile(fr'[{"".join(_illegal_XML_ranges)}]')
+
+
+def cleanXMLString(s):
+    return _illegal_XML_re.sub('', s)
+
+
+def parseXMLString(s: str):
+    """ Parse an XML string and return an ElementTree object. """
+    if not s.strip():
+        return None
+    try:  # Attempt to parse the string as-is without cleaning (which is expensive)
+        return ElementTree.fromstring(s.encode('utf-8'))
+    except ElementTree.ParseError:  # If it fails, clean the string and try again
+        cleaned_s = cleanXMLString(s).encode('utf-8')
+        return ElementTree.fromstring(cleaned_s) if cleaned_s.strip() else None

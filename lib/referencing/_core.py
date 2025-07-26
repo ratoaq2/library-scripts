@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from enum import Enum
-from typing import Any, Callable, ClassVar, Generic, Protocol, TypeVar
+from typing import Any, Callable, ClassVar, Generic, Protocol
 from urllib.parse import unquote, urldefrag, urljoin
 
 from attrs import evolve, field
 from rpds import HashTrieMap, HashTrieSet, List
+
+try:
+    from typing_extensions import TypeVar
+except ImportError:  # pragma: no cover
+    from typing import TypeVar
 
 from referencing import exceptions
 from referencing._attrs import frozen
@@ -557,8 +562,8 @@ class Registry(Mapping[URI, Resource[D]]):
             anchors = anchors.update(registry._anchors)
             uncrawled = uncrawled.update(registry._uncrawled)
 
-            if registry._retrieve is not _fail_to_retrieve:
-                if registry._retrieve is not retrieve is not _fail_to_retrieve:
+            if registry._retrieve is not _fail_to_retrieve:  # type: ignore[reportUnnecessaryComparison] ???
+                if registry._retrieve is not retrieve is not _fail_to_retrieve:  # type: ignore[reportUnnecessaryComparison] ???
                     raise ValueError(  # noqa: TRY003
                         "Cannot combine registries with conflicting retrieval "
                         "functions.",
@@ -590,7 +595,12 @@ class Registry(Mapping[URI, Resource[D]]):
 
 
 #: An anchor or resource.
-AnchorOrResource = TypeVar("AnchorOrResource", AnchorType[Any], Resource[Any])
+AnchorOrResource = TypeVar(
+    "AnchorOrResource",
+    AnchorType[Any],
+    Resource[Any],
+    default=Resource[Any],
+)
 
 
 @frozen
