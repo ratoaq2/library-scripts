@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -6,12 +5,7 @@ from urllib.parse import quote_plus
 from plexapi import media, utils
 from plexapi.base import Playable, PlexPartialObject, PlexHistory, PlexSession, cached_data_property
 from plexapi.exceptions import BadRequest
-from plexapi.mixins import (
-    AdvancedSettingsMixin, SplitMergeMixin, UnmatchMatchMixin, ExtrasMixin, HubsMixin, PlayedUnplayedMixin, RatingMixin,
-    ArtUrlMixin, ArtMixin, LogoMixin, PosterUrlMixin, PosterMixin, ThemeUrlMixin, ThemeMixin,
-    MovieEditMixins, ShowEditMixins, SeasonEditMixins, EpisodeEditMixins,
-    WatchlistMixin
-)
+from plexapi.mixins import MovieMixins, ShowMixins, SeasonMixins, EpisodeMixins, ClipMixins, PlayedUnplayedMixin
 
 
 class Video(PlexPartialObject, PlayedUnplayedMixin):
@@ -336,11 +330,7 @@ class Video(PlexPartialObject, PlayedUnplayedMixin):
 
 @utils.registerPlexObject
 class Movie(
-    Video, Playable,
-    AdvancedSettingsMixin, SplitMergeMixin, UnmatchMatchMixin, ExtrasMixin, HubsMixin, RatingMixin,
-    ArtMixin, LogoMixin, PosterMixin, ThemeMixin,
-    MovieEditMixins,
-    WatchlistMixin
+    Video, Playable, MovieMixins
 ):
     """ Represents a single Movie.
 
@@ -349,11 +339,12 @@ class Movie(
             TYPE (str): 'movie'
             audienceRating (float): Audience rating (usually from Rotten Tomatoes).
             audienceRatingImage (str): Key to audience rating image (rottentomatoes://image.rating.spilled).
-            chapters (List<:class:`~plexapi.media.Chapter`>): List of Chapter objects.
+            chapters (List<:class:`~plexapi.media.Chapter`>): List of chapter objects.
             chapterSource (str): Chapter source (agent; media; mixed).
             collections (List<:class:`~plexapi.media.Collection`>): List of collection objects.
+            commonSenseMedia (:class:`~plexapi.media.CommonSenseMedia`): Common Sense Media object.
             contentRating (str) Content rating (PG-13; NR; TV-G).
-            countries (List<:class:`~plexapi.media.Country`>): List of countries objects.
+            countries (List<:class:`~plexapi.media.Country`>): List of country objects.
             directors (List<:class:`~plexapi.media.Director`>): List of director objects.
             duration (int): Duration of the movie in milliseconds.
             editionTitle (str): The edition title of the movie (e.g. Director's Cut, Extended Edition, etc.).
@@ -425,6 +416,10 @@ class Movie(
     @cached_data_property
     def collections(self):
         return self.findItems(self._data, media.Collection)
+
+    @cached_data_property
+    def commonSenseMedia(self):
+        return self.findItem(self._data, media.CommonSenseMedia)
 
     @cached_data_property
     def countries(self):
@@ -543,11 +538,7 @@ class Movie(
 
 @utils.registerPlexObject
 class Show(
-    Video,
-    AdvancedSettingsMixin, SplitMergeMixin, UnmatchMatchMixin, ExtrasMixin, HubsMixin, RatingMixin,
-    ArtMixin, LogoMixin, PosterMixin, ThemeMixin,
-    ShowEditMixins,
-    WatchlistMixin
+    Video, ShowMixins
 ):
     """ Represents a single Show (including all seasons and episodes).
 
@@ -566,6 +557,7 @@ class Show(
                 100 = On next refresh).
             childCount (int): Number of seasons (including Specials) in the show.
             collections (List<:class:`~plexapi.media.Collection`>): List of collection objects.
+            commonSenseMedia (:class:`~plexapi.media.CommonSenseMedia`): Common Sense Media object.
             contentRating (str) Content rating (PG-13; NR; TV-G).
             duration (int): Typical duration of the show episodes in milliseconds.
             enableCreditsMarkerGeneration (int): Setting that indicates if credits markers detection is enabled.
@@ -652,6 +644,10 @@ class Show(
         return self.findItems(self._data, media.Collection)
 
     @cached_data_property
+    def commonSenseMedia(self):
+        return self.findItem(self._data, media.CommonSenseMedia)
+
+    @cached_data_property
     def genres(self):
         return self.findItems(self._data, media.Genre)
 
@@ -714,7 +710,7 @@ class Show(
             Raises:
                 :exc:`~plexapi.exceptions.BadRequest`: If title or season parameter is missing.
         """
-        key = f'{self.key}/children?excludeAllLeaves=1'
+        key = self._buildQueryKey(f'{self.key}/children', excludeAllLeaves=1)
         if title is not None and not isinstance(title, int):
             return self.fetchItem(key, Season, title__iexact=title)
         elif season is not None or isinstance(title, int):
@@ -727,7 +723,7 @@ class Show(
 
     def seasons(self, **kwargs):
         """ Returns a list of :class:`~plexapi.video.Season` objects in the show. """
-        key = f'{self.key}/children?excludeAllLeaves=1'
+        key = self._buildQueryKey(f'{self.key}/children', excludeAllLeaves=1)
         return self.fetchItems(key, Season, container_size=self.childCount, **kwargs)
 
     def episode(self, title=None, season=None, episode=None):
@@ -741,7 +737,7 @@ class Show(
             Raises:
                 :exc:`~plexapi.exceptions.BadRequest`: If title or season and episode parameters are missing.
         """
-        key = f'{self.key}/allLeaves'
+        key = self._buildQueryKey(f'{self.key}/allLeaves')
         if title is not None:
             return self.fetchItem(key, Episode, title__iexact=title)
         elif season is not None and episode is not None:
@@ -750,7 +746,7 @@ class Show(
 
     def episodes(self, **kwargs):
         """ Returns a list of :class:`~plexapi.video.Episode` objects in the show. """
-        key = f'{self.key}/allLeaves'
+        key = self._buildQueryKey(f'{self.key}/allLeaves')
         return self.fetchItems(key, Episode, **kwargs)
 
     def get(self, title=None, season=None, episode=None):
@@ -790,10 +786,7 @@ class Show(
 
 @utils.registerPlexObject
 class Season(
-    Video,
-    AdvancedSettingsMixin, ExtrasMixin, RatingMixin,
-    ArtMixin, LogoMixin, PosterMixin, ThemeUrlMixin,
-    SeasonEditMixins
+    Video, SeasonMixins
 ):
     """ Represents a single Season.
 
@@ -913,7 +906,7 @@ class Season(
             Raises:
                 :exc:`~plexapi.exceptions.BadRequest`: If title or episode parameter is missing.
         """
-        key = f'{self.key}/children'
+        key = self._buildQueryKey(f'{self.key}/children')
         if title is not None and not isinstance(title, int):
             return self.fetchItem(key, Episode, title__iexact=title)
         elif episode is not None or isinstance(title, int):
@@ -926,7 +919,7 @@ class Season(
 
     def episodes(self, **kwargs):
         """ Returns a list of :class:`~plexapi.video.Episode` objects in the season. """
-        key = f'{self.key}/children'
+        key = self._buildQueryKey(f'{self.key}/children')
         return self.fetchItems(key, Episode, **kwargs)
 
     def get(self, title=None, episode=None):
@@ -935,7 +928,7 @@ class Season(
 
     def show(self):
         """ Return the season's :class:`~plexapi.video.Show`. """
-        return self.fetchItem(self.parentKey)
+        return self.fetchItem(self._buildQueryKey(self.parentKey))
 
     def watched(self):
         """ Returns list of watched :class:`~plexapi.video.Episode` objects. """
@@ -972,10 +965,7 @@ class Season(
 
 @utils.registerPlexObject
 class Episode(
-    Video, Playable,
-    ExtrasMixin, RatingMixin,
-    ArtMixin, LogoMixin, PosterMixin, ThemeUrlMixin,
-    EpisodeEditMixins
+    Video, Playable, EpisodeMixins
 ):
     """ Represents a single Episode.
 
@@ -984,7 +974,7 @@ class Episode(
             TYPE (str): 'episode'
             audienceRating (float): Audience rating (TMDB or TVDB).
             audienceRatingImage (str): Key to audience rating image (tmdb://image.rating).
-            chapters (List<:class:`~plexapi.media.Chapter`>): List of Chapter objects.
+            chapters (List<:class:`~plexapi.media.Chapter`>): List of chapter objects.
             chapterSource (str): Chapter source (agent; media; mixed).
             collections (List<:class:`~plexapi.media.Collection`>): List of collection objects.
             contentRating (str) Content rating (PG-13; NR; TV-G).
@@ -1146,7 +1136,12 @@ class Episode(
     def _season(self):
         """ Returns the :class:`~plexapi.video.Season` object by querying for the show's children. """
         if self.grandparentKey and self.parentIndex is not None:
-            return self.fetchItem(f'{self.grandparentKey}/children?excludeAllLeaves=1&index={self.parentIndex}')
+            key = self._buildQueryKey(
+                f'{self.grandparentKey}/children',
+                excludeAllLeaves=1,
+                index=self.parentIndex
+            )
+            return self.fetchItem(key)
         return None
 
     def __repr__(self):
@@ -1223,11 +1218,11 @@ class Episode(
 
     def season(self):
         """" Return the episode's :class:`~plexapi.video.Season`. """
-        return self.fetchItem(self.parentKey)
+        return self.fetchItem(self._buildQueryKey(self.parentKey))
 
     def show(self):
         """" Return the episode's :class:`~plexapi.video.Show`. """
-        return self.fetchItem(self.grandparentKey)
+        return self.fetchItem(self._buildQueryKey(self.grandparentKey))
 
     def _defaultSyncTitle(self):
         """ Returns str, default title for a new syncItem. """
@@ -1249,8 +1244,7 @@ class Episode(
 
 @utils.registerPlexObject
 class Clip(
-    Video, Playable,
-    ArtUrlMixin, PosterUrlMixin
+    Video, Playable, ClipMixins
 ):
     """ Represents a single Clip.
 
