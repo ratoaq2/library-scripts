@@ -3,6 +3,7 @@
 .idea
 .cache
 .env
+.uv-environment
 plexy*.yml
 cleanit.yml
 subliminal.yml
